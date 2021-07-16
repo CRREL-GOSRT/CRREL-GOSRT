@@ -1,0 +1,40 @@
+## Comments with Pound signs!
+
+### File Paths and Names ###
+
+MasterPath = /Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/
+LayerPaths = Pit1_1_3/,
+MaterialPath = /Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/
+PropFileName = Properties.txt
+
+## Snowpack Size and Layer Characteristics
+LayerTops = 350,0
+xSize = 10
+ySize = 10
+
+## Unit Configuration
+DepthUnits = mm
+WaveUnits = nm
+
+## Optional Contaminate Properties - Fsoot = 0, for pristine snow
+Fsoot = 0,0,0
+Contaminate = diesel
+
+## Phase function options
+PhaseFunc=2
+Asymmetry = 0.87
+PhaseSamples = 10000
+
+## Setting photon killing parameters
+RussianRouletteThresh = 0.02
+RussianRouletteWeight = 6
+
+## Geographic information, to aid in setting solar zenith and azimuth angles
+## only used when calling GetZenith()
+Latitude = 43.8163
+Longitude = -72.2740
+Time = 02-12 16:45
+Elevation = 553
+
+## Fraction of Diffuse Radiation.
+DiffuseFraction = 1.

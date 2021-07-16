@@ -1,0 +1,47 @@
+## Comments with Pound signs!
+
+### This is a readme file that should help describe what each namelist variable does in the slab model RTM
+
+## Comma separated values are "lists" and correspond to properties of individual layers.
+
+### File Paths and Names ###
+
+MasterPath = Parent path to folder with subfolders representing each snow layer.
+LayerPaths = Comma separated subfolders within the master path that contain .txt files with layer properties
+MaterialPath = Full path to material .csv files with refractive index information
+PropFileName = Properties.txt
+
+## Snowpack Size and Layer Characteristics
+LayerTops = Comma separated values indicating the physical top of each layer, last value must be 0, however if 0 is not included, the model will just add it.
+
+xSize = physical x starting position in model, mostly irrelevant
+ySize = physical y starting position in model, mostly irrelevant
+
+## Unit Configuration
+DepthUnits = Units for layer depths, can be (mm, m, cm, in)
+WaveUnits = Units for Wavelength, can be ('m','cm','mm','um','nm')
+
+## Optional Contaminate Properties - Fsoot = 0, for pristine snow
+Fsoot = Comma separated values indicating the "soot" photon path (i.e., fraction of photon path spent within a contaminate)
+Contaminate = Contaminate material: string, must correspond to a .csv file in MaterialPath
+
+## Phase function options
+PhaseFunc= Specification of how to compute the phase function, just use 2 for now, I haven't built in the ability to use the Henyey-Greenstein function (which will one day become option 1)
+Asymmetry = Asymmetry parameter for PhaseFunc=1, not yet relevant.
+PhaseSamples = Number of unique phase function samples to generate and pull from when computing scattering angle probabalistically (on the order of 10000, is good)
+
+
+## Setting photon killing parameters
+RussianRouletteThresh = Lower threshold of photon energy to start killing photons using the Russian roulette function (0.01,0.02, typically)
+RussianRouletteWeight = Integer number to assist with photon killing (I usually leave it at 6, but can be anything on this order)
+
+
+## Geographic information, to aid in setting solar zenith and azimuth angles
+## only used when calling GetZenith()
+Latitude = Site latitude
+Longitude = Site longitude
+Time = Time of sample (in UTC)
+Elevation = Site elevation in meters
+
+## Fraction of Diffuse Radiation.
+DiffuseFraction = Fraction of diffuse radiation.  In short, when running the model, one input is the Zenith and Azimuth angle for incident radiation.  These angles are specific to "direct" radiation.  Diffuse radiation is given a random incident Zenith and Azimuth angle, and the partitioning between the two terms is determined by DiffuseFraction.  Set to zero for totally direct, or 1 for totally diffuse.
