@@ -1,6 +1,6 @@
 ## Continuous Medium Photon-Tracking Model ##
 import sys
-sys.path.append("/Users/rdcrltwl/Desktop/CRRELRTM")
+sys.path.append("/Users/rdcrltwl/Desktop/CRRELRTM/CRREL-GOSRT")
 import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd

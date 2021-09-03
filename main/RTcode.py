@@ -478,6 +478,83 @@ def TracktoAbs(CRRELPolyData,pSource,pTarget,nIce,normalsMesh,obbTree,units='um'
     return TotalIceLength,TotalLength,intersections
 
 
+def RawPhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',
+                     nAir=1.00003,raylen=1000,polar=0,nBounce=40,converg=0.999,absorb=True):
+
+    assert hasattr(CRRELPolyData, 'isCRRELPolyData') == True,"This is not a CRRELPolyData Object, This function can only take CRRELPolyData Objects."
+
+    inSnow = True ## yes, we are in the space.
+    ice = False #No we are not in Ice (or in this example, Glass)
+
+    assert nBounce > 1, "nBouce must be greater than 1!"
+
+    pSource=np.array(pSource)
+    pTarget=np.array(pTarget)
+
+    intersections = np.reshape(np.array(pSource), (1,3))
+
+    incidentV= pts2unitVec(pTarget,pSource).squeeze()
+    total_path=0
+    currentWeight=1.0
+    for b in range(nBounce):
+        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
+                                                                            obbTree, normalsMesh,ice)
+        if b == 0 and isHit == False:
+            ## MISSES particle, return all -1s.
+            return -1,-1,True
+        else:
+            if isHit ==True:
+                # Incident ray and surface normal vectors
+                v_i = pts2unitVec(pSource, pTarget).squeeze()
+                v_n = np.array(normalMeshIntersection).squeeze()
+                # Check to see if ray if incident ray is inside or outside of dense material
+                # Assign indices of refraction values
+                if np.dot(v_i, v_n) < 0: ## you are in AIR!
+                    # Assign indices of refraction values
+                    n1 = nAir
+                    n2 = nIce
+                    # Is ray transmitted or reflected?
+                    v_i_new, reflected,bounce = isReflected(n1, n2, v_i, v_n,polar=polar)
+                    if reflected:
+                        ice = False
+                    else:
+                        ice = True
+
+
+                    iceDist=0.0
+                else: ## You are in ice!
+                    # Assign indices of refraction values
+                    n1 = nIce
+                    n2 = nAir
+                    v_n=-v_n
+                    # If photon is not absorbed, is photon reflected?
+                    v_i_new, reflected,bounce = isReflected(n1, n2, v_i, v_n,polar=polar)
+                    if reflected:
+                        ice = True
+                    else:
+                        ice = False
+
+                    iceDist+=ptsDistance(pSource, intersectionPt)
+
+                ## Get Reflected/Transmitted Weights Amount ##
+                pSource = np.array(intersectionPt) + 1e-3 * v_i_new
+                pTarget = np.array(intersectionPt) + raylen * v_i_new
+
+                if absorb == True:
+                    deltaW=(1.-np.exp(-(kIce*iceDist)))*currentWeight
+                    currentWeight=currentWeight-deltaW
+
+
+            else:
+                inSnow = False
+                break
+
+
+            Uvect=pts2unitVec(intersectionPt+ 1. * v_i_new,intersectionPt).squeeze()
+            return currentWeight,np.dot(incidentV,Uvect),False
+
+
+
 def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',
         nAir=1.00003,raylen=1000,polar=0,nBounce=10,converg=0.999,absorb=True):
 
@@ -592,5 +669,264 @@ def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce
                 if np.sum(weights) >= converg-absorbed:
                     ## You're close enough, exit the loop!
                     break
+#    print("TOTAL PATH LENGTH (mm) = %s | Total absorbed = %s"%(total_path,absorbed))
+    return weights,COSPHIS,intersections,False
+
+
+
+def AdvParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',
+        nAir=1.00003,raylen=1000,polar=0,nBounce=10,converg=0.999,absorb=True,TrackThresh=0.1,Tdepth=4):
+
+    """Particle Phase Function Computes the Phase Function of a specified particle through monte photon tracking
+        by comparing the scattering angle of a photon incident upon the particle surface for the direction determined by pSource and pTarget
+        and a series of photon tracks exiting the particle.  In this function, rays are tracked and weighted using Snell's and Fresnel's laws until
+        the total 99.9% of the energy has been either scattered or absorbed by the particle.  A max-bounce restriction is placed to limit
+        particles that get trapped within a TIR loop.
+
+        Inputs:
+            CRRELPolyData - A CRRELPolyData Object that represents the 3D particle mesh: Must have an assigned material.
+            pSource - initial 3D position vector
+            pTarget - initial 3D target vector used to determine initial photon trajectory incident on the particle
+            wavelength - wavelength of incident radiation
+
+            units (optional) - units of the WaveLength (default is micrometers), can also be determined from wavelength, if wavelength is a string.
+            nAir (optional) - refractive index of air
+            raylen (optional) - specified distance to launch photon in, not important, just needs to be long enough to ensure it will intersect the particle
+            polar (optional) - IF polar is a complex number, the fresnel equations will be polarized according to the imaginary part of "polar":
+                - if the imaginary part is = 1 the parallel polarization (Rs) is returned
+                - otherwise the perpendicular polarization (Rp) is returned
+                - if polar is NOT a complex number, assumes unpolarized.
+            nBounce (optional) - Max number of bounces allowed before photon is killed
+            converg (optional) - photon is killed, once this fraction of the total intial energy is accounted for
+            absorb (optional) - If true, some photon energy is absorbed within the particle, which can influence the weights of the scattering angles for the later bounces
+
+        Returns:
+            weights - array: fraction of incident energy associated with each scattering angle
+            COSPHIS - array: the cosine of the scattering angles
+            intersections - list: 3D position vectors for each intersection, can be used to show photon trace through the particle
+            Dummy - Boolean:
+                - If True, then the initial photon trajectory missed the particle and no scattering angles are returned
+                - If False, then there are scattering angles
+        """
+
+
+    assert hasattr(CRRELPolyData, 'isCRRELPolyData') == True,"This is not a CRRELPolyData Object, This function can only take CRRELPolyData Objects."
+
+    inSnow = True ## yes, we are in the space.
+    ice = False #No we are not in Ice (or in this example, Glass)
+
+    assert nBounce > 1, "nBouce must be greater than 1!"
+
+    pSource=np.array(pSource)
+    pTarget=np.array(pTarget)
+
+    intersections = np.reshape(np.array(pSource), (1,3))
+
+    incidentV= pts2unitVec(pTarget,pSource).squeeze()
+    total_path=0
+    absorbed=0
+    ExtraPoints=[]
+    ExtraDrct=[]
+    ExtraWeight=[]
+    for b in range(nBounce):
+        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
+                                                                            obbTree, normalsMesh,ice)
+        if b == 0 and isHit == False:
+            ## MISSES particle, return all -1s.
+            return -1,-1,-1,True
+        else:
+            if isHit ==True:
+                ## First ray hits the particle.
+                if b == 0:
+                    weights=[]
+                    COSPHIS=[]
+
+                # Incident ray and surface normal vectors
+                v_i = pts2unitVec(pSource, pTarget).squeeze()
+                v_n = np.array(normalMeshIntersection).squeeze()
+
+                # Check to see if ray if incident ray is inside or outside of dense material
+                # Assign indices of refraction values
+                if np.dot(v_i, v_n) < 0: ## you are in AIR!
+                    # Assign indices of refraction values
+                    n1 = nAir
+                    n2 = nIce
+                    v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
+                    ice=True
+
+                else: ## You are in ice!
+                    # Assign indices of refraction values
+                    n1 = nIce
+                    n2 = nAir
+                    v_n=-v_n
+                    v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
+                    ice=True
+
+                pathLength = ptsDistance(pSource, intersectionPt)
+                total_path+=pathLength
+
+                if b == 0:
+                    if reflect > TrackThresh:
+                        ExtraPoints.append(intersectionPt)
+                        ExtraDrct.append(v_i_ref)
+                        ExtraWeight.append(reflect)
+
+                    else:
+                        Uvect=pts2unitVec(intersectionPt+ 1. * v_i_ref,intersectionPt).squeeze()
+                        weights.append(reflect)
+                        COSPHI=np.dot(incidentV,Uvect)
+                        COSPHIS.append(COSPHI)
+
+                    currentWeight=transmiss
+                    v_i_new=v_i_tran
+                else:
+
+                    if absorb == True:
+                        deltaW=(1.-np.exp(-(kIce*pathLength)))*currentWeight
+                        currentWeight=currentWeight-deltaW
+                        absorbed+=deltaW
+
+                    TransWeight=currentWeight*transmiss
+
+                    if TransWeight > TrackThresh:
+                        ExtraPoints.append(intersectionPt)
+                        ExtraDrct.append(v_i_tran)
+                        ExtraWeight.append(TransWeight)
+                    else:
+                        Uvect=pts2unitVec(intersectionPt+ 1. * v_i_tran,intersectionPt).squeeze()
+                        COSPHI=np.dot(incidentV,Uvect)
+                        COSPHIS.append(COSPHI)
+                        weights.append(transmiss*currentWeight)
+
+                    currentWeight=currentWeight*reflect
+                    v_i_new=v_i_ref
+
+                pSource= np.array(intersectionPt) + 1e-3 * v_i_new
+                pTarget = np.array(intersectionPt) + raylen * v_i_new
+
+                intersections = np.vstack((intersections, np.reshape(intersectionPt, (1,3))))
+
+                if np.sum(weights) >= converg-absorbed:
+                    ## You're close enough, exit the loop!
+                    break
+    Cdepth=1
+    while(Cdepth) <= Tdepth:
+        ExtraPointsNew=[]
+        ExtraDrctNew=[]
+        ExtraWeightNew=[]
+
+        if len(ExtraPoints) == 0:
+            Cdepth=Tdepth+1
+            break
+
+        for exdx in range(len(ExtraPoints)):
+            pSource= np.array(ExtraPoints[exdx]) + 1e-3 * ExtraDrct[exdx]
+            pTarget = np.array(ExtraPoints[exdx]) + raylen * ExtraDrct[exdx]
+
+            intersections = np.vstack((intersections, np.reshape(pSource, (1,3))))
+
+            #print(ExtraPoints[exdx],ExtraDrct[exdx],ExtraWeight[exdx])
+            ice=False
+            for b in range(nBounce):
+                intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
+                                                                                    obbTree, normalsMesh,ice)
+                if b == 0 and isHit == False:
+                    ## MISSES particle, return all -1s.
+                    Uvect=pts2unitVec(ExtraPoints[exdx]+ 1. * ExtraDrct[exdx],ExtraPoints[exdx]).squeeze()
+                    weights.append(ExtraWeight[exdx])
+                    COSPHI=np.dot(incidentV,Uvect)
+                    COSPHIS.append(COSPHI)
+                    #intersections = np.vstack((intersections, np.reshape(ExtraPoints[exdx]+ 1. * ExtraDrct[exdx], (1,3))))
+                    break
+                else:
+                    if isHit ==True:
+                        # Incident ray and surface normal vectors
+                        v_i = pts2unitVec(pSource, pTarget).squeeze()
+                        v_n = np.array(normalMeshIntersection).squeeze()
+
+                        # Check to see if ray if incident ray is inside or outside of dense material
+                        # Assign indices of refraction values
+                        if np.dot(v_i, v_n) >= 0 and b == 0:
+                            ## THIS IS A FALSE ALARM!
+                            Uvect=pts2unitVec(ExtraPoints[exdx]+ 1. * ExtraDrct[exdx],ExtraPoints[exdx]).squeeze()
+                            weights.append(ExtraWeight[exdx])
+                            COSPHI=np.dot(incidentV,Uvect)
+                            COSPHIS.append(COSPHI)
+                            #intersections = np.vstack((intersections, np.reshape(ExtraPoints[exdx]+ 1. * ExtraDrct[exdx], (1,3))))
+                            break
+
+                        if np.dot(v_i, v_n) < 0: ## you are in AIR!
+                            # Assign indices of refraction values
+                            n1 = nAir
+                            n2 = nIce
+                            v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
+                            ice=True
+
+                        else: ## You are in ice!
+                            # Assign indices of refraction values
+                            n1 = nIce
+                            n2 = nAir
+                            v_n=-v_n
+                            v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
+                            ice=True
+
+                        pathLength = ptsDistance(pSource, intersectionPt)
+                        total_path+=pathLength
+
+                        if b == 0:
+
+                            if reflect*ExtraWeight[exdx] > TrackThresh and Cdepth != Tdepth:
+                                ExtraPointsNew.append(intersectionPt)
+                                ExtraDrctNew.append(v_i_ref)
+                                ExtraWeightNew.append(reflect*ExtraWeight[exdx])
+
+                            else:
+                                Uvect=pts2unitVec(intersectionPt+ 1. * v_i_ref,intersectionPt).squeeze()
+                                weights.append(reflect*ExtraWeight[exdx])
+                                COSPHI=np.dot(incidentV,Uvect)
+                                COSPHIS.append(COSPHI)
+
+                            currentWeight=transmiss*ExtraWeight[exdx]
+                            v_i_new=v_i_tran
+                        else:
+
+                            if absorb == True:
+                                deltaW=(1.-np.exp(-(kIce*pathLength)))*currentWeight
+                                currentWeight=currentWeight-deltaW
+                                absorbed+=deltaW
+
+                            TransWeight=currentWeight*transmiss
+
+                            if TransWeight > TrackThresh and Cdepth != Tdepth:
+                                ExtraPointsNew.append(intersectionPt)
+                                ExtraDrctNew.append(v_i_tran)
+                                ExtraWeightNew.append(TransWeight)
+                            else:
+                                Uvect=pts2unitVec(intersectionPt+ 1. * v_i_tran,intersectionPt).squeeze()
+                                COSPHI=np.dot(incidentV,Uvect)
+                                COSPHIS.append(COSPHI)
+                                weights.append(transmiss*currentWeight)
+
+                            currentWeight=currentWeight*reflect
+                            v_i_new=v_i_ref
+
+                        pSource= np.array(intersectionPt) + 1e-3 * v_i_new
+                        pTarget = np.array(intersectionPt) + raylen * v_i_new
+
+                        intersections = np.vstack((intersections, np.reshape(intersectionPt, (1,3))))
+
+                        if np.sum(weights) >= converg-absorbed:
+                            ## You're close enough, exit the loop!
+                            break
+
+        ExtraPoints=ExtraPointsNew[:]
+        ExtraDrct=ExtraDrctNew[:]
+        ExtraWeight=ExtraWeightNew[:]
+        Cdepth+=1
+
+        if np.sum(weights) >= converg-absorbed:
+            ## You're close enough, exit the loop!
+            break
+
 #    print("TOTAL PATH LENGTH (mm) = %s | Total absorbed = %s"%(total_path,absorbed))
     return weights,COSPHIS,intersections,False

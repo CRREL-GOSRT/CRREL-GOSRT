@@ -96,18 +96,18 @@ class SlabModel:
                            'Contaminate':'diesel',
                            'PhaseFunc':2,
                            'MaterialPath':'/Users/rdcrltwl/Desktop/NewRTM/Materials/',
+                           'xSize':10,
+                           'ySize':10,
                            'Asymmetry':[0.87],
                            'PhaseSamples':10000,
                            'RussianRouletteThresh':0.01,
                            'RussianRouletteWeight':6,
-                           'xSize':10,
-                           'ySize':10,
                            'Latitude':41.11,
                            'Longitude':-72.4,
                            'Elevation':0.0,
                            'Time':'12-13 17:00',
                            'TimeFormat':'%m-%d %H:%M',
-                           'DiffuseFraction':0
+                           'DiffuseFraction':0,
                            }
 
 
@@ -319,6 +319,75 @@ class SlabModel:
 
         print("Finished initializing Model parameters")
 
+    def SetSnowSurface(self,x,y,z,nPhotons,Zenith,Azimuth,SlopeNorm=False):
+        """Sets the height of the snow surface and returns photon starting positions and initial vectors"""
+        import pyvista as pv
+        self.__xCoords=x[:]
+        self.__yCoords=y[:]
+        self.__zTop=z[:]
+
+
+        points = np.c_[x.reshape(-1), y.reshape(-1), z.reshape(-1)]
+        cloud = pv.PolyData(points)
+        vol = cloud.delaunay_2d()
+        vol.compute_normals(inplace=True,flip_normals=True)
+
+        xrands=[]
+        yrands=[]
+        zrands=[]
+        cosUs=[]
+
+        L=np.max(z)-np.min(z)
+
+        while(len(xrands) < nPhotons):
+            if np.random.uniform(0,1) > self.__DiffuseFraction:
+                LL= L/np.cos(Zenith)
+                L1=np.sqrt(LL**2-L**2)
+                randAzi=Azimuth
+                randZen=Zenith
+                stop=np.array([np.random.uniform(np.min(x)-L1,np.max(x)+L1),np.random.uniform(np.min(y)-L1,np.max(y)+L1),np.min(z)])
+                cosUStart=np.array([np.sin(Zenith)*np.cos(Azimuth)*L1,np.sin(Zenith)*np.sin(Azimuth)*L1,-np.cos(Zenith)*LL])
+            else:
+                randAzi=np.random.uniform(0.0,2.*np.pi)
+                randZen=np.random.uniform(0.0,np.pi/2.)
+                LL= L/np.cos(randZen)
+                L1=np.sqrt(LL**2-L**2)
+                stop=np.array([np.random.uniform(np.min(x)-L1,np.max(x)+L1),np.random.uniform(np.min(y)-L1,np.max(y)+L1),np.min(z)])
+                cosUStart=np.array([np.sin(randZen)*np.cos(randAzi)*L1,np.sin(randZen)*np.sin(randAzi)*L1,-np.cos(randZen)*LL])
+
+
+            start=stop-cosUStart
+
+            # Perform ray trace
+            points, ind = vol.ray_trace(start, stop,first_point=True)
+            # # Create geometry to represent ray trace
+            ray = pv.Line(start, stop)
+            intersection = pv.PolyData(points)
+
+            if intersection.n_faces == 0:
+                continue
+
+            if SlopeNorm == True:
+                dist=stop-start
+                unit=dist/np.sqrt(dist[0]**2+dist[1]**2+dist[2]**2)
+
+                newCos=np.dot(unit,np.squeeze(vol['Normals'][ind,:]))
+
+                cosUs.append(np.array([np.sin(randZen)*np.cos(randAzi),np.sin(Zenith)*np.sin(randAzi),newCos]))
+            else:
+                cosUs.append(np.array([np.sin(randZen)*np.cos(randAzi),np.sin(Zenith)*np.sin(randAzi),-np.cos(randZen)]))
+            cell=intersection.GetCell(0)
+
+            xpt=cell.GetBounds()[0]
+            ypt=cell.GetBounds()[2]
+            zpt=cell.GetBounds()[4]
+
+            xrands.append(xpt)
+            yrands.append(ypt)
+            zrands.append(zpt)
+
+        return xrands, yrands,zrands,cosUs,vol
+
     def __RussianRoulette(self,Photons):
         """
             Russian Routlette function that helps remove photon packets with little
@@ -489,8 +558,410 @@ class SlabModel:
 
         ### WORK ON THIS TODAY -- >TED
 
-    def RunBRDF(self,WaveLength,Zenith,Azimuth,nPhotons=10000,binSize=10,angleUnits='Degrees'):
 
+    def TrackFewPhoton(self,x,y,z,WaveLength,Zenith,Azimuth,nPhotons=10000,binSize=10,angleUnits='Degrees',KillAt=0.001):
+        from scipy.interpolate import griddata
+        import pyvista as pv
+
+        """TRACKS PHOTONS AND PLOTS THEM ON THE 3D MAP!"""
+
+        print("TRACKING SOME PHOTONS!")
+
+        AllowedAngleUnits=['deg','rad','degrees','radians']
+        if angleUnits.lower() not in AllowedAngleUnits:
+            self.Warning("The angle unit %s is not allowed, assuming your input angles are in degrees"%angleUnits)
+            angleUnits='degrees'
+
+        if not self.WaveLengthLimits[0] <= WaveLength < self.WaveLengthLimits[1]:
+            self.FatalError("The Wavelength %s is outside of the allowed list of wavelengths!"%WaveLength)
+
+        ## Get absorption coefficients for the specified wavelength for ice and any contaminates
+
+        RI,n,kappaIce=self.GetRefractiveIndex(WaveLength,units='nm')
+        self.AssignMaterial(self.namelistDict['Contaminate'],filePath=self.namelistDict['MaterialPath'])
+        Rsoot,nsoot,kappaSoot=self.GetRefractiveIndex(WaveLength,units='nm')
+        self.AssignMaterial('ice',filePath=self.namelistDict['MaterialPath'])
+
+        if angleUnits.lower() in ['deg','degrees']:
+            ## if the units are degrees, convert to radians!
+            ## fix azimuth to 0 on x, and rotate so the incident direction is aimed correctly.
+            Azimuth=np.pi+np.radians(Azimuth)
+            Zenith=np.radians(Zenith)
+
+        if np.cos(Zenith) <=0:
+            self.FatalError("The Zenith angle %.1f rad is below the horizon!  Cannot use for incident radiation!"%Zenith)
+
+
+        print("Setting Snow Surface ... This may take a few moments....")
+        xx, yy,zz,cosU,pvVol=self.SetSnowSurface(x,y,z,nPhotons,Zenith,Azimuth)
+        print("DONE!")
+
+        ## The number of photons!
+        ## Starting at top layer, so all layer ids start at zero!
+        layerIds = np.zeros([nPhotons],dtype=np.short) ## short integer
+
+        extCoeff = np.array([self.__ExtCoeffDict[i] for i in layerIds])
+        Fice = np.array([self.__FiceDict[i] for i in layerIds])
+        Fsoot = np.array([self.__SootDict[i] for i in layerIds])
+        if self.namelistDict['PhaseFunc'] == 1: ## If using idealized Henyey Green Function!
+            g=np.array([self.namelistDict['Asymmetry'][i] for i in layerIds])
+        else:
+            g=self.NumLayers*[0.9]
+
+        ## Current bin defines the lower and upper boundaries of the bin!
+        currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
+
+        points = np.array( (x.flatten(), y.flatten()) ).T
+        values = z.flatten()
+        u0=np.array([xx,yy,zz])
+
+        Photons=np.ones([nPhotons],dtype=np.double)
+
+        cosU=np.array(cosU).T
+
+        absorbed=0.0
+        albedo=0.0
+        transmiss=0.0
+        firstStep=True
+
+        p = pv.Plotter()
+        p.add_mesh(pvVol,
+                show_edges=False, opacity=1., color="gray",label="Test Mesh")
+
+
+        light = pv.Light()
+        light.set_direction_angle(30, -20)
+        p.add_light(light)
+
+        for jdx, j in enumerate(Photons):
+            p.add_mesh(u0[:,jdx],color='r')
+
+        while(len(Photons) > 0):
+            ## Find out if we're killing any photons, and how much energy is absorbed
+            Photons,abso=self.__RussianRoulette(Photons)
+            absorbed+=abso ## add to absorbed total
+
+            if np.sum(Photons)/nPhotons < KillAt:
+                absorbed+=np.sum(Photons)
+                break
+
+            #Note, that at this point, no array sizes have been altered, but "dead" photons have a value of -999.
+
+            ## Get the distance traveled
+            rand=np.random.uniform(0.0,1.,size=len(Photons))
+            rand=np.array(3*[rand])
+            s=-np.log(rand)/extCoeff ## Distance!
+
+            u1=u0+cosU*s ## New position!
+
+            ## deal with boundaries! Periodic! - X boundaries first! ##
+            index=np.where(u1[0,:] > np.max(x))
+            u1[0,index]=np.min(x)+u1[0,index]-np.max(x)
+
+            index=np.where(u1[0,:] < np.min(x))
+            u1[0,index]=np.max(x)-(np.min(x)-u1[0,index])
+
+            ## deal with boundaries! Periodic! - Y boundaries second! ##
+            index=np.where(u1[1,:] > np.max(y))
+            u1[1,index]=np.min(y)+u1[1,index]-np.max(y)
+
+            index=np.where(u1[1,:] < np.min(y))
+            u1[1,index]=np.max(y)-(np.min(y)-u1[1,index])
+
+
+            if np.sum(Photons)/nPhotons > 0.01:
+                xpos,ypos=u1[0,:],u1[1,:]
+                if firstStep == True:
+                    Ztops = griddata( points, values, (xpos,ypos),method='linear')
+                else:
+                    Ztops = griddata( points, values, (xpos,ypos),method='nearest')
+            else:
+                Ztops=np.array(len(Photons)*[self.__slabDepth])
+
+            firstStep == False
+            print('%.2f precent remaining'%(np.sum(Photons)/nPhotons*100.))
+            #print(len(Photons))
+
+            ThroughIdx = np.where((u1[2,:] > Ztops[:]) & (cosU[2,:] < 0))[0]
+
+            for jdx, j in enumerate(Photons):
+                start=u0[:,jdx]
+                stop=u1[:,jdx]
+                ray = pv.Line(start, stop)
+                p.add_mesh(ray,color='b')
+
+            if len(ThroughIdx) > 0:
+                num=0
+                print("TOTAL THROUGH PHOTONS!",np.shape(ThroughIdx)[-1])
+                for tidx in range(np.shape(ThroughIdx)[-1]):
+
+                    start=u1[:,ThroughIdx[tidx]]
+                    stop=u1[:,ThroughIdx[tidx]]+cosU[:,ThroughIdx[tidx]]*1000.
+                    # Perform ray trace
+                    locs, ind = pvVol.ray_trace(start, stop,first_point=True)
+                    # # Create geometry to represent ray trace
+                    ray = pv.Line(start, u1[:,ThroughIdx[tidx]]+cosU[:,ThroughIdx[tidx]]*5)
+                    intersection = pv.PolyData(locs)
+
+                    iter=0
+                    while intersection.n_faces == 0:
+                        stop=u1[:,ThroughIdx[tidx]]+cosU[:,ThroughIdx[tidx]]*(iter+1)*np.max(s[0,ThroughIdx])
+                        x1,y1=stop[:2]
+
+                        ## deal with boundaries! Periodic! - X boundaries first! ##
+                        if x1 > np.max(x):
+                            x1 = np.min(x)+x1-np.max(x)
+
+                        if x1 < np.min(x):
+                            x1 = np.max(x)-(np.min(x)-x1)
+
+                        ## deal with boundaries! Periodic! - Y boundaries second! ##
+                        if y1 > np.max(y):
+                            y1 = np.min(y)+y1-np.max(y)
+
+                        if y1 < np.min(y):
+                            y1 = np.max(y)-(np.min(y)-y1)
+
+                        Ztop1 = griddata( points, values, (x1,y1),method='nearest')
+                        iter+=1
+
+                        if stop[2] < Ztop1:
+                            u1[:,ThroughIdx[tidx]]=stop
+                            break
+
+
+                    if iter == 0:
+                        num+=1
+                        cell=intersection.GetCell(0)
+                        xpt=cell.GetBounds()[0]
+                        ypt=cell.GetBounds()[2]
+                        zpt=cell.GetBounds()[4]
+                        u1[:,ThroughIdx[tidx]]=[xpt,ypt,zpt]
+                        stop=np.array([xpt,ypt,zpt])
+                        ray = pv.Line(start, stop)
+
+
+                    p.add_mesh(ray,color='g')
+                    p.add_mesh(start,color='r')
+                    p.add_mesh(stop,color='k')
+                    # p.add_mesh(np.array([xpt,ypt,zpt]),color='lime')
+
+                # print("TOTAL NUMBER GOOD!",num)
+                # p.show_grid(color='k')
+                # p.set_background("royalblue", top="aliceblue")
+                # # p.add_legend()
+                # p.show_grid()
+                # p.show()
+                #
+                # sys.exit()
+            if np.sum(Photons)/nPhotons > 0.01:
+                xpos,ypos=u1[0,:],u1[1,:]
+                Ztops = griddata( points, values, (xpos,ypos),method='nearest')
+            else:
+                Ztops=np.array(len(Photons)*[self.__slabDepth])
+
+            ## Where photons have gone out of the top of the snowpack!
+
+            WhereOutTop=np.where((u1[2,:] > Ztops[:]) & (cosU[2,:] > 0))[0]
+
+            for jdx, j in enumerate(WhereOutTop):
+                stop=u1[:,j]+cosU[:,j]*1000.
+                locs, ind = pvVol.ray_trace(u1[:,j], stop,first_point=True)
+                intersection = pv.PolyData(locs)
+
+                if intersection.n_faces == 0:
+                    albedo+=Photons[j]
+                    ray = pv.Line(start,u1[:,j]+cosU[:,j]*5)
+                    p.add_mesh(ray,color='lime')
+                    p.add_mesh(start,color='r')
+                    p.add_mesh(u1[:,j]+cosU[:,j]*5,color='fuchsia')
+
+                    p.show()
+                    sys.exit()
+                    Photons[j]=0.0
+                else:
+                    cell=intersection.GetCell(0)
+                    xpt=cell.GetBounds()[0]
+                    ypt=cell.GetBounds()[2]
+                    zpt=cell.GetBounds()[4]
+                    start=u1[:,j]
+                    u1[:,j]=[xpt,ypt,zpt]
+
+                    ray = pv.Line(start, [xpt,ypt,zpt])
+                    p.add_mesh(ray,color='r')
+                    p.add_mesh(start,color='g')
+                    p.add_mesh(np.array([xpt,ypt,zpt]),color='b')
+
+
+            #OutTop=np.ma.masked_where((u1[2,:] < Ztops[:]), Photons)
+            #albedo+=np.sum(np.ma.masked_less(OutTop.compressed(),0).compressed()) ## Add all to albedo.
+
+            ## If a surface boundary is included in the analysis.
+            if self.__Surface == True:
+                ## Surfaced with defined BRDF is at this level!
+                SfcIdx=np.where(u1[2,:] <=0)[0] ## indicies where photons hit surface!
+                ## We only need to enter this function if any photons hit the surface.
+                if np.sum(Photons[SfcIdx]) > 0:
+                    Indir=cosU[:,SfcIdx]
+
+                    Zen=np.arccos(-Indir[2,:])
+                    Azi=np.pi-np.arctan(Indir[1,:]/Indir[0,:])
+                    OutDir=np.zeros_like(Indir)
+                    ## SO FAR, it is recommended that only Lambert and Specular
+                    ## options are used, since they can compute the reflected
+                    ## direction as vectorized quantities
+                    ## using a more complicated BRDF is too computationally expensive in accounting to
+                    ## individual incident angles.  The said, the code is here to do that.
+                    if self.__SfcBRDF == 'lambert':
+                        outWeights=np.ones_like(Zen)*self.BRDFParams['albedo']
+                        RandZen=np.random.uniform(0,1,size=len(Zen))*np.pi/2.
+                        RandAzi=np.random.uniform(0,1,size=len(Zen))*np.pi*2.
+                        OutDir[0,:]=np.cos(RandAzi)
+                        OutDir[1,:]=np.sin(RandAzi)
+                        OutDir[2,:]=np.cos(RandZen)
+                    elif self.__SfcBRDF == 'specular':
+                        outWeights=np.ones_like(Zen)*self.BRDFParams['albedo']
+                        for kdx in range(Indir.shape[1]):
+                            cosThetai =  -np.dot(Indir[:,kdx],np.array([0,0,-1]))
+                            OutDir[:,kdx]= Indir[:,kdx] + 2. * cosThetai * np.array([0,0,-1])
+                    else:
+                        ## if using an explity BRDF for the surface.
+                        ## again, recommended that this isn't used at the time.
+                        outWeights=np.zeros([len(Zen)])
+                        for kdx in range(len(Zen)):
+                            HRDF, NewZen,NewPhi=BRDFFunc.BRDFProb(1,Zen[kdx],Azi[kdx],
+                                self.__BRDFPhi,self.__BRDFTheta,self.__BRDFdTheta,
+                                ParamDict=self.BRDFParams,BRDF=self.__SfcBRDF)
+
+                            outWeights[kdx]=HRDF
+                            OutDir[:,kdx]=[np.sin(NewZen)*np.cos(NewPhi),np.sin(NewZen)*np.sin(NewPhi),np.cos(NewZen)]
+
+                    transmiss+=np.sum(np.ma.masked_less((1.-outWeights)*Photons[SfcIdx],0).compressed()) ## Add all to transmiss
+                    Photons[SfcIdx]=outWeights*Photons[SfcIdx] ## reflectance!
+                    u1[2,SfcIdx] = 0.0001 ## set position to surface
+                    cosU[:,SfcIdx] = OutDir[:]
+
+
+                    for sfidx in range(len(SfcIdx)):
+                        if Ztops[SfcIdx[sfidx]] >0:
+                            continue
+
+                        start=u1[:,SfcIdx[sfidx]]
+                        stop=u1[:,SfcIdx[sfidx]]+cosU[:,SfcIdx[sfidx]]*1000.
+                        locs, ind = pvVol.ray_trace(start, stop,first_point=True)
+                        # # Create geometry to represent ray trace
+                        #ray = pv.Line(start, stop)
+                        intersection = pv.PolyData(locs)
+                        # p = pv.Plotter()
+                        # p.add_mesh(pvVol,
+                        #         show_edges=False, opacity=1., color="gray",label="Test Mesh")
+                        #
+                        # p.add_mesh(ray,color='b')
+                        # p.add_mesh(start)
+                        # p.add_mesh(stop)
+                        # light = pv.Light()
+                        # light.set_direction_angle(30, -20)
+                        # p.add_light(light)
+                        # p.show_grid(color='k')
+                        # p.set_background("royalblue", top="aliceblue")
+                        # # p.add_legend()
+                        # p.show_grid()
+                        #
+                        # print(intersection.n_faces)
+                        # p.show()
+                        #
+                        # sys.exit()
+                        if intersection.n_faces == 0:
+                            albedo+=Photons[SfcIdx[sfidx]]
+                            ray = pv.Line(start,u1[:,SfcIdx[sfidx]]+cosU[:,SfcIdx[sfidx]]*5)
+                            p.add_mesh(ray,color='lime')
+                            p.add_mesh(start,color='r')
+                            p.add_mesh(u1[:,SfcIdx[sfidx]]+cosU[:,SfcIdx[sfidx]]*5,color='fuchsia')
+                            Photons[SfcIdx[sfidx]]=0.0
+                        else:
+                            cell=intersection.GetCell(0)
+                            xpt=cell.GetBounds()[0]
+                            ypt=cell.GetBounds()[2]
+                            zpt=cell.GetBounds()[4]
+                            start=u1[:,SfcIdx[sfidx]]
+                            u1[:,SfcIdx[sfidx]]=[xpt,ypt,zpt]+cosU[:,SfcIdx[sfidx]]*s[0,SfcIdx[sfidx]]
+
+                            ray = pv.Line(start, [xpt,ypt,zpt])
+                            p.add_mesh(ray,color='r')
+                            p.add_mesh(start,color='g')
+                            p.add_mesh(np.array([xpt,ypt,zpt]),color='r')
+            ## This will track transmissivity out of the surface.
+            OutBottom=np.ma.masked_where(u1[2,:] >=0, Photons) ## out of the bottom
+
+            ## it also determines which photons to keep, removes all dead photons + photons that exit the top or bottom.
+            keepIdx=np.squeeze([(Photons > 0)]) ## Which photons to keep!
+
+            u1=u1[:,keepIdx]
+            u0=u0[:,keepIdx]
+            Photons=Photons[keepIdx]
+
+            ## special case, if there is only 1 photon left, add to absorbed and kill it
+            ## required to ensure that array lengths and indexing can work.
+            ## as long as you launch more than 1000 photons, this shouldn't matter.
+            if len(Photons) <= 1:
+                absorbed+=np.sum(Photons)
+                break
+            cosU=cosU[:,keepIdx]
+            layerIds=layerIds[keepIdx]
+            s=s[0,keepIdx]
+            ## Reset the current layer boundaries to match the current layer ids!
+            currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
+            ## Reset coefficients to current ids!
+            extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
+            Fice = np.array([self.__FiceDict[i] for i in layerIds])
+            Fsoot = np.array([self.__SootDict[i] for i in layerIds])
+
+            if self.namelistDict['PhaseFunc'] == 1: ## If using idealized Reset Phase Function Scattering
+                g=np.array([self.namelistDict['Asymmetry'][i] for i in layerIds])
+
+            ## okay, to recap, we have performed the russian roulette routine to handel dead PHOTONS
+            ## Moved the photon through space following the direction vector and current position.
+            ## updated albedo transmissivity based on whether photons have left the snowpack entirely
+            ## removed all photons no long in the snowpack, and update the current boundaries and coefficients.
+
+            ## Now need to do the phase function (it not idelized!)
+            if self.namelistDict['PhaseFunc'] == 2: ## if it's not idealized!
+                ProbIdx=np.random.randint(0,self.nSamples,size=len(Photons))
+                Scatter=np.zeros([len(Photons)])
+                ScatterNew=np.zeros_like(Scatter)
+                for i in self.__layerIds:
+                    ScatIdx=np.where(layerIds == i)
+                    Scatter[ScatIdx]=(self.__CosIs[i][ProbIdx])[ScatIdx]
+
+            ## Change the layers if needed.
+            layerIds, Scatter, Fice, extCoeff,Fsoot=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,extCoeff,Fsoot,
+                                                                self.__ExtCoeffDict,self.__FiceDict,self.__SootDict,
+                                                                g,Scatter,ProbIdx)
+
+
+            ## Absorb some photons! ##
+            deltaW=(1.-np.exp(-s*(kappaIce*Fice+kappaSoot*Fsoot)))*Photons
+            absorbed+=np.sum(deltaW)
+            Photons=Photons-deltaW
+
+            ## set new direction vector.
+            cosU=self.__SetDirection(cosU,Scatter)
+            u0[:]=u1[:]  ## set starting position to new position
+
+        p.show_grid(color='k')
+        p.set_background("royalblue", top="aliceblue")
+        # p.add_legend()
+        p.show_grid()
+        p.show()
+
+        sys.exit()
+
+        return
+
+
+    def RunBRDF(self,x,y,z,WaveLength,Zenith,Azimuth,nPhotons=10000,binSize=10,angleUnits='Degrees',KillAt=0.001):
+        from scipy.interpolate import griddata
+        import pyvista as pv
         """ User accessible function to estimate the Bidirectional Reflectance distribution Fuction (BRDF)
             following Kaempfer et al. 2007.
 
@@ -535,7 +1006,11 @@ class SlabModel:
         if np.cos(Zenith) <=0:
             self.FatalError("The Zenith angle %.1f rad is below the horizon!  Cannot use for incident radiation!"%Zenith)
 
-        cosUStart=[np.sin(Zenith)*np.cos(Azimuth),np.sin(Zenith)*np.sin(Azimuth),-np.cos(Zenith)]
+
+        print("Setting Snow Surface ... This may take a few moments....")
+        xx, yy,zz,cosU,pvVol=self.SetSnowSurface(x,y,z,nPhotons,Zenith,Azimuth)
+        print("DONE!")
+
         ## FOR BRDF STUFF ##
         angularArea = np.radians(binSize)**2.
         ## output comes in degrees!
@@ -544,12 +1019,6 @@ class SlabModel:
         ## Stagger Zenith to center the bins! ##
         BRZenBins=(BRZenBins[:-1]+BRZenBins[1:])/2.
         BRDFArray=np.zeros([len(BRAziBins),len(BRZenBins)])
-
-        ## initial position of the photons, random within x and y BOUNDARIES
-        ## z position set to top of layer!
-        xx = np.random.uniform(self.xSize,size=nPhotons)
-        yy = np.random.uniform(self.ySize,size=nPhotons)
-        zz = np.ones_like(xx)*self.__slabDepth
 
         ## Now, I need to set up coordinates for all the layer idenfication that matches
         ## The number of photons!
@@ -567,17 +1036,13 @@ class SlabModel:
         ## Current bin defines the lower and upper boundaries of the bin!
         currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
 
-        Photons=np.ones([nPhotons],dtype=np.double)
+        points = np.array( (x.flatten(), y.flatten()) ).T
+        values = z.flatten()
         u0=np.array([xx,yy,zz])
 
-        DiffusePhotons = int(nPhotons*self.__DiffuseFraction)
-        DirectPhotons = nPhotons-DiffusePhotons
+        Photons=np.ones([nPhotons],dtype=np.double)
 
-        randAzi=np.random.uniform(0.0,2.*np.pi,size=DiffusePhotons)
-        randZen=np.random.uniform(0.0,np.pi/2.,size=DiffusePhotons)
-        diffuse=[[np.sin(randZen[j])*np.cos(randAzi[j]),np.sin(randZen[j])*np.sin(randAzi[j]),-np.cos(randZen[j])] for j in range(DiffusePhotons)]
-
-        cosU=np.array(DirectPhotons*[cosUStart]+diffuse).T
+        cosU=np.array(cosU).T
 
         iterNum=0.0
         print("Running %i Photons at Wavelength %s nm to compute BRDF"%(nPhotons,WaveLength))
@@ -586,11 +1051,20 @@ class SlabModel:
         albedo=0.0
         transmiss=0.0
         ## Run the photon tracking model.
+        xxReflect=[]
+        yyReflect=[]
+        zzReflect=[]
+        NRGout=[]
+        firstStep=True
         while(len(Photons) > 0):
 
             ## Find out if we're killing any photons, and how much energy is absorbed
             Photons,abso=self.__RussianRoulette(Photons)
             absorbed+=abso ## add to absorbed total
+
+            if np.sum(Photons)/nPhotons < KillAt:
+                absorbed+=np.sum(Photons)
+                break
 
             #Note, that at this point, no array sizes have been altered, but "dead" photons have a value of -999.
 
@@ -598,18 +1072,137 @@ class SlabModel:
             rand=np.random.uniform(0.0,1.,size=len(Photons))
             rand=np.array(3*[rand])
             s=-np.log(rand)/extCoeff ## Distance!
+
+            #if firstStep == True:
+            #    s+=np.abs(x[0,1]-x[0,0])
+
             u1=u0+cosU*s ## New position!
 
+            ## deal with boundaries! Periodic! - X boundaries first! ##
+            index=np.where(u1[0,:] > np.max(x))
+            u1[0,index]=np.min(x)+u1[0,index]-np.max(x)
+
+            index=np.where(u1[0,:] < np.min(x))
+            u1[0,index]=np.max(x)-(np.min(x)-u1[0,index])
+
+            ## deal with boundaries! Periodic! - Y boundaries second! ##
+            index=np.where(u1[1,:] > np.max(y))
+            u1[1,index]=np.min(y)+u1[1,index]-np.max(y)
+
+            index=np.where(u1[1,:] < np.min(y))
+            u1[1,index]=np.max(y)-(np.min(y)-u1[1,index])
+
+
+            if np.sum(Photons)/nPhotons > 0.01:
+                xpos,ypos=u1[0,:],u1[1,:]
+                if firstStep == True:
+                    Ztops = griddata( points, values, (xpos,ypos),method='linear')
+                else:
+                    Ztops = griddata( points, values, (xpos,ypos),method='nearest')
+            else:
+                Ztops=np.array(len(Photons)*[self.__slabDepth])
+
+            firstStep == False
+            print('%.2f precent remaining'%(np.sum(Photons)/nPhotons*100.))
+            #print(len(Photons))
+
+            ThroughIdx = np.where((u1[2,:] > Ztops[:]) & (cosU[2,:] < 0))[0]
+
+            if len(ThroughIdx) > 0:
+                num=0
+                print("TOTAL THROUGH PHOTONS!",np.shape(ThroughIdx)[-1])
+                for tidx in range(np.shape(ThroughIdx)[-1]):
+
+                    start=u1[:,ThroughIdx[tidx]]
+                    stop=u1[:,ThroughIdx[tidx]]+cosU[:,ThroughIdx[tidx]]*2.*self.__slabDepth
+                    # Perform ray trace
+                    locs, ind = pvVol.ray_trace(start, stop,first_point=True)
+                    # # Create geometry to represent ray trace
+                    ray = pv.Line(start, stop)
+                    intersection = pv.PolyData(locs)
+                    #print(cosU[:,ThroughIdx[tidx]])
+                    # if tidx == 0:
+                    #         p = pv.Plotter()
+                    #         p.add_mesh(pvVol,
+                    #                 show_edges=False, opacity=1., color="gray",label="Test Mesh")
+                    #
+                    #
+                    #         light = pv.Light()
+                    #         light.set_direction_angle(30, -20)
+                    #         p.add_light(light)
+
+
+                    iter=0
+                    while intersection.n_faces == 0:
+                        stop=u1[:,ThroughIdx[tidx]]+cosU[:,ThroughIdx[tidx]]*(iter+1)*np.max(s[0,ThroughIdx])
+                        x1,y1=stop[:2]
+
+                        ## deal with boundaries! Periodic! - X boundaries first! ##
+                        if x1 > np.max(x):
+                            x1 = np.min(x)+x1-np.max(x)
+
+                        if x1 < np.min(x):
+                            x1 = np.max(x)-(np.min(x)-x1)
+
+                        ## deal with boundaries! Periodic! - Y boundaries second! ##
+                        if y1 > np.max(y):
+                            y1 = np.min(y)+y1-np.max(y)
+
+                        if y1 < np.min(y):
+                            y1 = np.max(y)-(np.min(y)-y1)
+
+                        Ztop1 = griddata( points, values, (x1,y1),method='nearest')
+                        iter+=1
+
+                        if stop[2] < Ztop1:
+                            u1[:,ThroughIdx[tidx]]=stop
+                            break
+
+
+                    # p.add_mesh(ray,color='b')
+                    # p.add_mesh(start,color='r')
+                    # p.add_mesh(stop,color='k')
+
+                    if iter == 0:
+                        num+=1
+                        cell=intersection.GetCell(0)
+                        xpt=cell.GetBounds()[0]
+                        ypt=cell.GetBounds()[2]
+                        zpt=cell.GetBounds()[4]
+                        u1[:,ThroughIdx[tidx]]=[xpt,ypt,zpt]
+
+                    # p.add_mesh(np.array([xpt,ypt,zpt]),color='lime')
+
+                # print("TOTAL NUMBER GOOD!",num)
+                # p.show_grid(color='k')
+                # p.set_background("royalblue", top="aliceblue")
+                # # p.add_legend()
+                # p.show_grid()
+                # p.show()
+                #
+                # sys.exit()
+            if np.sum(Photons)/nPhotons > 0.01:
+                xpos,ypos=u1[0,:],u1[1,:]
+                Ztops = griddata( points, values, (xpos,ypos),method='nearest')
+            else:
+                Ztops=np.array(len(Photons)*[self.__slabDepth])
+
             ## Where photons have gone out of the top of the snowpack!
-            OutTop=np.ma.masked_where(u1[2,:] < self.__slabDepth, Photons)
+            OutTop=np.ma.masked_where((u1[2,:] < Ztops[:]), Photons)
             albedo+=np.sum(np.ma.masked_less(OutTop.compressed(),0).compressed()) ## Add all to albedo.
+
+            if np.sum(Photons)/nPhotons > 0.01:
+                xxReflect+=list(np.ma.masked_where(u1[2,:] < Ztops[:],xpos).compressed())
+                yyReflect+=list(np.ma.masked_where(u1[2,:] < Ztops[:],ypos).compressed())
+                zzReflect+=list(np.ma.masked_where(u1[2,:] < Ztops[:],Ztops).compressed())
+                NRGout+=list(np.ma.masked_less(OutTop.compressed(),0).compressed())
             ## note the mask below zero rejects all dead photons from the sum.
 
             ## If a surface boundary is included in the analysis.
             if self.__Surface == True:
                 ## Surfaced with defined BRDF is at this level!
                 SfcIdx=np.where(u1[2,:] <=0)[0] ## indicies where photons hit surface!
-
+                print(len(SfcIdx))
                 ## We only need to enter this function if any photons hit the surface.
                 if np.sum(Photons[SfcIdx]) > 0:
                     Indir=cosU[:,SfcIdx]
@@ -648,19 +1241,62 @@ class SlabModel:
 
                     transmiss+=np.sum(np.ma.masked_less((1.-outWeights)*Photons[SfcIdx],0).compressed()) ## Add all to transmiss
                     Photons[SfcIdx]=outWeights*Photons[SfcIdx] ## reflectance!
-                    u1[2,SfcIdx] = 0.00001 ## set position to surface
+                    u1[2,SfcIdx] = 0.0001 ## set position to surface
                     cosU[:,SfcIdx] = OutDir[:]
+
+
+                    for sfidx in range(len(SfcIdx)):
+                        if Ztops[SfcIdx[sfidx]] >0:
+                            continue
+
+                        start=u1[:,SfcIdx[sfidx]]
+                        stop=u1[:,SfcIdx[sfidx]]+cosU[:,SfcIdx[sfidx]]*1000.
+                        locs, ind = pvVol.ray_trace(start, stop,first_point=True)
+                        # # Create geometry to represent ray trace
+                        # ray = pv.Line(start, stop)
+                        # intersection = pv.PolyData(locs)
+                        # p = pv.Plotter()
+                        # p.add_mesh(pvVol,
+                        #         show_edges=False, opacity=1., color="gray",label="Test Mesh")
+                        #
+                        # p.add_mesh(ray,color='b')
+                        # p.add_mesh(start)
+                        # p.add_mesh(stop)
+                        # light = pv.Light()
+                        # light.set_direction_angle(30, -20)
+                        # p.add_light(light)
+                        # p.show_grid(color='k')
+                        # p.set_background("royalblue", top="aliceblue")
+                        # # p.add_legend()
+                        # p.show_grid()
+                        #
+                        # print(intersection.n_faces)
+                        # p.show()
+                        #
+                        # sys.exit()
+                        if intersection.n_faces == 0:
+                            albedo+=Photons[SfcIdx[sfidx]]
+                            Photons[SfcIdx[sfidx]]=0.0
+                        else:
+                            cell=intersection.GetCell(0)
+                            xpt=cell.GetBounds()[0]
+                            ypt=cell.GetBounds()[2]
+                            zpt=cell.GetBounds()[4]
+                            u1[:,SfcIdx[sfidx]]=[xpt,ypt,zpt]+cosU[:,SfcIdx[sfidx]]*s[0,SfcIdx[sfidx]]
 
 
             ## This will track transmissivity out of the surface.
             OutBottom=np.ma.masked_where(u1[2,:] >=0, Photons) ## out of the bottom
+
             ## it also determines which photons to keep, removes all dead photons + photons that exit the top or bottom.
-            keepIdx=np.squeeze([(u1[2,:] >= 0) & (u1[2,:] < self.__slabDepth) & (Photons >= 0)]) ## Which photons to keep!
+            keepIdx=np.squeeze([(u1[2,:] > 0) & (u1[2,:] < Ztops[:]) & (Photons > 0)]) ## Which photons to keep!
             transmiss+=np.sum(np.ma.masked_less(OutBottom.compressed(),0).compressed()) ## Add all to transmiss
+
+        #    print(transmiss/nPhotons,albedo/nPhotons,len(Photons))
 
             ## PUT BRDF FUNCTIONS HERE! ##
             ## Get indicies where reflected.
-            whereAlbedo=np.where(u1[2,:] > self.__slabDepth)
+            whereAlbedo=np.where(u1[2,:] > Ztops[:])
             BRPhoton=Photons[whereAlbedo]
             if np.sum(BRPhoton) > 0: ##Only take the trouble if this is true!
                 BRDrct=cosU[:,whereAlbedo]
@@ -747,11 +1383,12 @@ class SlabModel:
             ## end loop --> go back up!
             ## break from loop once the size of the photon array is zero.
 
-        return BRDFArray,BRAziBins,BRZenBins,albedo,absorbed,transmiss
+        return BRDFArray,BRAziBins,BRZenBins,albedo,absorbed,transmiss,xxReflect,yyReflect,zzReflect,NRGout
 
-    def GetSpectralAlbedo(self,WaveLength,Zenith,Azimuth,nPhotons=10000,
+    def GetSpectralAlbedo(self,x,y,z,WaveLength,Zenith,Azimuth,nPhotons=10000,
                           verbose = True,angleUnits='degrees',
                           transmission=None,TransCompute=10):
+        from scipy.interpolate import griddata
         """
             User accessible function to compute the spectral albedo of the medium from photon-tracking
 
@@ -818,9 +1455,15 @@ class SlabModel:
         if np.cos(Zenith) <=0:
             self.FatalError("The Zenith angle %.1f rad is below the horizon!  Cannot use for incident radiation!"%Zenith)
 
-        cosUStart=[np.sin(Zenith)*np.cos(Azimuth),np.sin(Zenith)*np.sin(Azimuth),-np.cos(Zenith)]
+        print("Setting Snow Surface ... This may take a few moments....")
+        xx, yy,zz,cosUs=self.SetSnowSurface(x,y,z,nPhotons,Zenith,Azimuth)
+        print("DONE!")
+
 
         print("Computing Spectral Albedo of this Snowpack From %.1f to %.1f"%(np.min(WaveLength),np.max(WaveLength)))
+
+        points = np.array( (x.flatten(), y.flatten()) ).T
+        values = z.flatten()
 
         SpectralAlbedo=[]
         SpectralAbsorption=[]
@@ -829,6 +1472,7 @@ class SlabModel:
         ## Special function here that will allow you to track the transmitted energy
         ## at specified depths within the snowpack., more of a diagnostic.
         for wdx,wavelen in enumerate(WaveLength):
+
             ## set up transmission dictionary here for wavelength.
             if TrackTransmission == True:
                 PhotonId=np.arange(nPhotons)
@@ -840,11 +1484,6 @@ class SlabModel:
 
             if verbose == True:
                 print("Working on Wavelength %.1f nm"%wavelen)
-            ## initial position of the photons, random within x and y BOUNDARIES
-            ## z position set to top of layer!
-            xx = np.random.uniform(self.xSize,size=nPhotons)
-            yy = np.random.uniform(self.ySize,size=nPhotons)
-            zz = np.ones_like(xx)*self.__slabDepth
 
             RI,n,kappaIce=self.GetRefractiveIndex(wavelen,units='nm')
             self.AssignMaterial(self.namelistDict['Contaminate'],filePath=self.namelistDict['MaterialPath'])
@@ -870,15 +1509,7 @@ class SlabModel:
 
             Photons=np.ones([nPhotons],dtype=np.double)
             u0=np.array([xx,yy,zz])
-            DiffusePhotons = int(nPhotons*self.__DiffuseFraction)
-            DirectPhotons = nPhotons-DiffusePhotons
-
-            randAzi=np.random.uniform(0.0,2.*np.pi,size=DiffusePhotons)
-            randZen=np.random.uniform(0.0,np.pi/2.,size=DiffusePhotons)
-            diffuse=[[np.sin(randZen[j])*np.cos(randAzi[j]),np.sin(randZen[j])*np.sin(randAzi[j]),-np.cos(randZen[j])] for j in range(DiffusePhotons)]
-
-            cosU=np.array(DirectPhotons*[cosUStart]+diffuse).T
-
+            cosU=np.array(cosUs).T
             iterNum=0.0
 
             absorbed=0.0
@@ -895,9 +1526,36 @@ class SlabModel:
                 s=-np.log(rand)/extCoeff ## Distance!
                 u1=u0+cosU*s ## New position!
 
+                ## deal with boundaries! Periodic! - X boundaries first! ##
+                index=np.where(u1[0,:] > np.max(x))
+                u1[0,index]=np.min(x)+u1[0,index]-np.max(x)
+
+                index=np.where(u1[0,:] < np.min(x))
+                u1[0,index]=np.max(x)-(np.min(x)-u1[0,index])
+
+                ## deal with boundaries! Periodic! - Y boundaries second! ##
+                index=np.where(u1[1,:] > np.max(y))
+                u1[1,index]=np.min(y)+u1[1,index]-np.max(y)
+
+                index=np.where(u1[1,:] < np.min(y))
+                u1[1,index]=np.max(y)-(np.min(y)-u1[1,index])
+
+
+                if np.sum(Photons)/nPhotons > 0.05:
+                    xpos,ypos=u1[0,:],u1[1,:]
+                    Ztops = griddata( points, values, (xpos,ypos),method='nearest')
+                else:
+                    Ztops=np.array(len(Photons)*[self.__slabDepth])
+
+
+
+                #print('%.2f precent remaining'%(np.sum(Photons)/nPhotons*100.))
                 ## Where photons have gone out of the top of the snowpack!
-                OutTop=np.ma.masked_where(u1[2,:] < self.__slabDepth, Photons)
+                OutTop=np.ma.masked_where(u1[2,:] < Ztops[:], Photons)
+
                 albedo+=np.sum(np.ma.masked_less(OutTop.compressed(),0).compressed()) ## Add all to albedo.
+
+                #print(albedo/nPhotons,transmiss/nPhotons)
 
                 ## See comments on surface section in the RunBRDF function.
                 if self.__Surface == True:
@@ -953,7 +1611,7 @@ class SlabModel:
                         cosU[:,SfcIdx] = OutDir[:]
 
                 OutBottom=np.ma.masked_where(u1[2,:] >=0, Photons) ## out of the bottom
-                keepIdx=np.squeeze([(u1[2,:] >= 0) & (u1[2,:] < self.__slabDepth) & (Photons >= 0)]) ## Which photons to keep!
+                keepIdx=np.squeeze([(u1[2,:] >= 0) & (u1[2,:] < Ztops[:]) & (Photons >= 0)]) ## Which photons to keep!
                 transmiss+=np.sum(np.ma.masked_less(OutBottom.compressed(),0).compressed()) ## Add all to transmiss
                 ## update all necessary arrays to keep only indexes that you need! ##
 
@@ -998,6 +1656,7 @@ class SlabModel:
                     for i in self.__layerIds:
                         ScatIdx=np.where(layerIds == i)
                         Scatter[ScatIdx]=(self.__CosIs[i][ProbIdx])[ScatIdx]
+
 
                 layerIds, Scatter, Fice, extCoeff,Fsoot=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,extCoeff,Fsoot,
                                                                     self.__ExtCoeffDict,self.__FiceDict,self.__SootDict,
