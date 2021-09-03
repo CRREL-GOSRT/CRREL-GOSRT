@@ -1,18 +1,18 @@
 import sys
-sys.path.append("/Users/rdcrltwl/Desktop/CRRELRTM/main")
+sys.path.append("C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\CRREL-GOSRT\\main")
 import DrawShapes,CRRELPolyData
-import RenderFunctions
+# import RenderFunctions
 import RTcode
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy import stats
+# from scipy import stats
 from scipy.optimize import curve_fit
 import vtk
 import pyvista as pv
-import pandas as pd
+# import pandas as pd
 from datetime import datetime
 import glob as glob
-import os
+# import os
 
 
 def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,MaterialPath,wavelen,VoxelRes,
@@ -147,6 +147,11 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     print("Found Extinction Coefficient = %.2f after %.1f seconds"%(popt[0],(time2-time1).total_seconds()))
     print("Total Bad Photons =%i --> %.3f percent of all photons"%(bad,len(distances)*100.*bad/nPhotons))
     print("------------------------------------")
+    
+    ## Calculate Single Scattering Albedo
+    ssalb = (popt[0]-kIce)/popt[0]
+    print("Single Scattering Albedo = %.2f | WaveLength = %s"%(ssalb,wavelen))
+    print("------------------------------------")
 
     ## Next Up, F_Ice and PhaseFunction
     ###
@@ -172,10 +177,11 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     print("Computing Scattering Phase Function using %s Grain Samples..."%GrainSamples)
 
     time1=datetime.now()
-    POWER,thetas,PhaseText,dtheta=ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMesh,nIce,kIce,
+    POWER,thetas,asymmparam,PhaseText,dtheta=ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMesh,nIce,kIce,
                                                       VoxelRes_mm,verbose=verbose,Absorb=Absorb)
     time2=datetime.now()
     print("Finished computing the scattering phase function after %.1f seconds"%((time2-time1).total_seconds()))
+    print(asymmparam)
     print("------------------------------------")
 
     ### Now write the data out to a file!
@@ -194,11 +200,13 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Estimated Sample Grain Diameter = %.2f (mm) \n"%GrainDiam)
        file.write("Max Number of Internal Bounces allowed in phase function and Ice Path Sampling: %i \n"%MaxBounce)
        file.write("Extinction Coefficient = %.4f (mm^{-1}) \n"%popt[0])
+       file.write("Single Scattering Albedo = %.4f \n"%ssalb)
        file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmean(Fice))
        file.write("Median fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmedian(Fice))
        file.write("Standard Deviation fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanstd(Fice))
        file.write("Number of bins in phase function = %i \n"%PhaseBins)
-       file.write("Angular Bin Size (radians) = %.5f"%dtheta)
+       file.write("Angular Bin Size (radians) = %.5f \n"%dtheta)
+       file.write("Asymmetry Parameter = %.3f \n"%asymmparam)
        file.write("------------------------------------------------------  \n")
        file.write("Theta (radians), Phase Function\n")
        for tdx in range(len(thetas)):
@@ -219,7 +227,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     else:
         fig=None
 
-    return fig
+    return fig,POWER,thetas,dtheta
 
 def ConvertVoxel2mm(resolution,units='um'):
     """ This simple function is used to "smartly" convert the voxel resolution from the allowed units
@@ -521,9 +529,11 @@ def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMe
             dtheta (float) - bin size (radians)
     """
 
-    bins=np.linspace(0,np.pi,PhaseBins)
-    dtheta=np.abs(bins[1]-bins[0])
-    bins=np.cos(bins)
+    thetas=np.linspace(0,np.pi,PhaseBins)
+    dtheta=np.abs(thetas[1]-thetas[0])
+    thetaCenters=(thetas[:-1]+thetas[1:])/2.
+    bins=np.cos(thetas)
+    dthetac=np.abs(bins[1:]-bins[:-1])
     binCenters=(bins[:-1]+bins[1:])/2.
     POWER=np.zeros_like(binCenters)
 
@@ -562,15 +572,23 @@ def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMe
                 continue
 
             for cdx,c in enumerate(COSPHIS):
-                index=np.argmin(np.abs(binCenters-c))
+                # index=np.argmin(np.abs(binCenters-c))
+                index = np.where((c>bins[1:]) & (c<bins[:-1]))[0]
                 POWER[index]+=weights[cdx]
 
         if verbose == True:
             timeNow=datetime.now()
             print("Total percent complete =%.1f | Time Elapsed: %.1f seconds"%(100.*(1.+sdx)/GrainSamples,(timeNow-time1).total_seconds()))
 
-    thetas=np.arccos(binCenters)
-    POWER=4.*np.pi*POWER[:]/(GrainSamples*nPhotons*np.sin(thetas[:])*dtheta)
+    # thetas=np.arccos(binCenters)
+    # POWER=4.*np.pi*POWER[:]/(GrainSamples*nPhotons*np.sin(thetas[:])*dtheta)
+    N = np.sum(POWER)
+    dOmega = np.sin(thetaCenters)*dtheta*2*np.pi
+    pf=4.*np.pi*POWER[:]/(N*dOmega)
     PhaseText='Phase function computed using "particle-oriented" approach with %s grain samples and %s photons per grain \nAbsorption included in phase function = %s \n'%(GrainSamples,nPhotons,Absorb)
 
-    return POWER,thetas,PhaseText,dtheta
+    # calculate asymmetry parameter
+    asymmparam = 0.5*dtheta*np.sum(np.cos(thetaCenters)*np.sin(thetaCenters)*pf)
+    # asymmparam = 0.5*np.sum(binCenters*pf*dthetac)
+    print('asymmparam: ', asymmparam)
+    return pf,thetaCenters,asymmparam,PhaseText,dtheta

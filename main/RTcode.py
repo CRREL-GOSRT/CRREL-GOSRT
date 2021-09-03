@@ -1,8 +1,9 @@
 import vtk
 import numpy as np
 import sys
-sys.path.append("/Users/rdcrltwl/Desktop/SnowOpticsProject/NewRTM")
-from Shapes import DrawShapes
+# sys.path.append("/Users/rdcrltwl/Desktop/SnowOpticsProject/NewRTM")
+sys.path.append('C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\CRREL-GOSRT')
+# from Shapes import DrawShapes
 
 """Contains stand alone helper functions to facilitate the photon tracking RT code and interaction with rays and 3D mesh elements."""
 

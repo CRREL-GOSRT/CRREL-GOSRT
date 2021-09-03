@@ -1,5 +1,5 @@
 import sys
-sys.path.append("/Users/rdcrltwl/Desktop/NewRTM")
+sys.path.append('C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\CRREL-GOSRT\\main')
 import DrawShapes,CRRELPolyData
 import RenderFunctions
 import RTcode
@@ -21,16 +21,11 @@ def HeyNey(PHI,g=0.847):
 
 ## paths -->
 ## Parent path
-parentPath='/Users/rdcrltwl/Desktop/SnowOpticsProject/MicroCTData/micro-CT/VTK'
-parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK'
-parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/1Feb_UVD_Pit1/UVD_Pit1_A_2/UVD_Pit1_A_2_2/VTK'
-parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/1Feb_UVD_Pit1/Sample_1_20-13cm/VTK/'
-#parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/13Mar_HBEF/VTK'
-#parentPath='/Users/rdcrltwl/Desktop/NewRTM/SampleData/'
+parentPath='C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\MicroCT_Data\\12Feb_UVD\\VTK'
 ## Path to Material csv files containing refractive index information.
-MaterialPath = '/Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/'
+MaterialPath = 'C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\NewRTM\\Materials\\'
 ## Path where VTK mesh file is stored --> Located in parentPath
-subpath='1Feb_UVD_Pit1_1_2/Snow/'
+subpath='contour\\test\\Pit1_1_3\\ssalb\\'
 
 #subpath='13Mar_HBEF_1_1/16Mar_HBEF_1_1_Rec/VOI/Snow/'
 #subpath='Spheres/'
@@ -54,8 +49,8 @@ outputFile='Properties.txt'
 ##      Doesn't matter much for visible wavelengths, definitely matters for IR.
 PhaseType=1
 GrainPath='GRAINS/'
-FullPath='FULL/'
-GrainSamples=40
+# FullPath='FULL/'
+GrainSamples=30
 PhaseAbsorb=True
 #############################################
 TimeTest=False ## Determines timing of individual functions.
@@ -102,7 +97,7 @@ do_plot=True
 ###
 
 ## The VTKfilename is the name of the mesh file that is read into this
-VTKfilename= os.path.join(parentPath,subpath,FullPath,vtkFname)  #'%s/%s/%s'%(parentPath,subpath,vtkFname)
+VTKfilename= os.path.join(parentPath,subpath,vtkFname)  #'%s/%s/%s'%(parentPath,subpath,vtkFname)
 outputFilename= os.path.join(parentPath,subpath,outputFile)  #"/".join(VTKfilename.split('/')[:-1])+'/'+outputFile
 
 GrainFiles=glob.glob(os.path.join(parentPath,subpath,GrainPath)+'Grain*')
@@ -206,7 +201,8 @@ for ddx, d in enumerate(distances):
         p11=[x1,y1,z1]
         p22=[x2,y2,z2]
         try:
-            Pext=RTcode.TracktoExt(prism,p11,p22,wavelen,float(d))
+            # Pext=RTcode.TracktoExt(prism,p11,p22,wavelen,float(d))
+            Pext=RTcode.TracktoExt(prism,p11,p22)    # Julie Parno changed 8/2/2021
         except:
             print("Bad Photon! Something weird happened, so I'm skipping this!")
             continue
@@ -230,6 +226,10 @@ if do_plot == True:
 
 print("Ke = %.2f | WaveLength = %s"%(popt[0],wavelen))
 ke=popt[0]
+
+# Single scattering albedo
+ssalb = (ke-abso)/ke
+print("Single Scattering Albedo = %.2f | WaveLength = %s"%(ssalb,wavelen))
 
 ## NOW DO Absorption AND PHASE FUNCTION
 TotalLens=[]
@@ -356,6 +356,7 @@ with open(outputFilename, 'w') as file:
    file.write("Estimated Sample Grain Diameter = %.2f (mm) \n"%GrainDiam)
    file.write("Max Number of Bounces allowed in phase function and Ice Path Sampling: %i \n"%maxBounce)
    file.write("Extinction Coefficient = %.4f (mm^{-1}) \n"%ke)
+   file.write("Single Scattering Albedo = %.4f (mm^{-1}) \n"%ssalb)
    file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%FiceMean)
    file.write("Number of bins in phase function = %i \n"%nBins)
    file.write("Angular Bin Size (radians) = %.5f"%dtheta)
