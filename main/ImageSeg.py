@@ -44,6 +44,9 @@
     ---------------
       July 2021
 """
+
+# import sys
+# sys.path.append('C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\CRREL-GOSRT\\main')
 import vtk
 import pandas as pd
 import numpy as np
@@ -51,9 +54,7 @@ import pyvista as pv
 import pymeshfix as mf
 from matplotlib import pyplot as plt
 import glob
-import sys
 from matplotlib.image import imread
-sys.path.append('C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\NewRTM\\main')
 import CRRELPolyData
 import RenderFunctions
 from scipy import signal, ndimage as ndi
@@ -64,8 +65,9 @@ from skimage.measure import marching_cubes_lewiner
 from skimage.filters import gaussian
 from datetime import datetime, timedelta
 import os
+from pathlib import Path
     
-def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,minGrainSize,decimate_val,check=True):
+def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,minGrainSize,decimate_val,check=True):
     
     """
     This function generates a mesh from binarized microCT
@@ -130,20 +132,19 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
     
     ###
     
-    # This finds folders and subpaths
-    folder= os.path.join(path, subpath)
-    textpath= os.path.join(folder,binary_path.split('/')[0],txtFilePfx)
+    # Text file describing sample depths
+    # textpath= os.path.join(folder,binary_path.split('/')[0],txtFilePfx)
     
-    # this sets the output path!
-    path= os.path.join(path,'VTK',outpath)
-    #path = os.path.dirname(path)
-    if not os.path.exists(path):
-        os.makedirs(path)
+    # # this sets the output path!
+    # path= os.path.join(path,'VTK',outpath)
+    # #path = os.path.dirname(path)
+    # if not os.path.exists(path):
+    #     os.makedirs(path)
     Zrange=[Zbot,Ztop]
     
     # Saves mesh parameters for reviewing/testing purposes
     if saveMeshParams==True:
-        with open(os.path.join(path,'MeshParameters.txt'), 'w') as file:
+        with open(os.path.join(outpath,'MeshParameters.txt'), 'w') as file:
            file.write("File Created on %s \n"%datetime.now().strftime('%c'))
            file.write("Grain segmentation method = Watershed segmentation \n")
            file.write("XYStart, XYEnd =  %.1f, %.1f \n"%(XYstart,XYend))
@@ -160,7 +161,7 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
         data=pd.read_csv(textfile,header=41)                                   
     
     # Read in full stack of plane view images
-    pngfiles=sorted(glob.glob(os.path.join(folder,binary_path,'*.png')))
+    pngfiles=sorted(glob.glob(os.path.join(path,'*.png')))
     
     # Calculate and define depths
     Z=[]
@@ -209,7 +210,7 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
                       
         SNOW[:,:,idx]=img_mask[:]
     
-    np.save(os.path.join(path,'microCT_arr.npy'),SNOW)
+    np.save(os.path.join(outpath,'microCT_arr.npy'),SNOW)
     
     # create grid from new selected image field, where Z is the bottom image of the stack (lowest depth, highest voxel #)
     X,Y,Z=np.meshgrid(X,Y,Z)
@@ -247,7 +248,7 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
     ZZ=plt.pcolormesh(grain_labels[:,:,-1])
     plt.colorbar(ZZ)
     plt.title('Min Grain Size set at ' + str(minGrainSize) + ' mm')
-    plt.savefig(os.path.join(path,('grainsep_'+str(minGrainSize)+'.png')))
+    plt.savefig(os.path.join(outpath,('grainsep_'+str(minGrainSize)+'.png')))
     
     # Plot approximate grain size distribution
     radius = np.ones((len(properties),1))
@@ -259,7 +260,7 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
     plt.xlabel('Grain radius (mm)')
     plt.ylabel('Number of grains')
     plt.title('Total number of grains =' + str(len(properties)))
-    plt.savefig(os.path.join(path,('grainsize_distr_'+str(minGrainSize)+'.png')))
+    plt.savefig(os.path.join(outpath,('grainsize_distr_'+str(minGrainSize)+'.png')))
     
     
     print('Total number of grains = ' + str(len(properties)))
@@ -269,7 +270,7 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
     print('Sample volume before meshing = %.2f mm^3' %(totalvol*1000**3))
     
     if saveMeshParams==True:
-        with open(os.path.join(path,'MeshParameters.txt'), 'a') as file:
+        with open(os.path.join(outpath,'MeshParameters.txt'), 'a') as file:
            file.write('\n')
            file.write('Total number of grains = %i \n' %len(properties))
            file.write('Mean grain radius = %.2f \n' %(np.mean(radius)))
@@ -418,14 +419,14 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
             polyShell=CRRELPolyData._CRRELPolyData(mesh,xBounds,yBounds,zBounds,voxelRes,100.,description='REAL Snow Mesh')
     
             if create_individual == True:
-                print(path+'Grain_%i.vtk'%grain)
-                polyShell.WritePolyDataToVtk(path+'Grain_%i.vtk'%grain)  # write VTK file for individual grain
+                print(os.path.join(outpath,'Grain_%i.vtk'%grain))
+                polyShell.WritePolyDataToVtk(outpath / 'Grain_%i.vtk'%grain)  # write VTK file for individual grain
             newPoly=False
         else:
             poly1=CRRELPolyData._CRRELPolyData(mesh,xBounds,yBounds,zBounds,voxelRes,100.,description='REAL Snow Mesh')
     
             if create_individual == True:
-                poly1.WritePolyDataToVtk(path+'Grain_%i.vtk'%grain)  # write VTK file for individual grain
+                poly1.WritePolyDataToVtk(outpath / 'Grain_%i.vtk'%grain)  # write VTK file for individual grain
     
             polyShell.appendPoly(poly1)
     
@@ -467,7 +468,7 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
     RenderFunctions.ShowRender(renderer,camera=camera)
     
     if check == False:
-        polyShell.WritePolyDataToVtk(path+fullMeshName)  # write out full sample mesh
+        polyShell.WritePolyDataToVtk(outpath / fullMeshName)  # write out full sample mesh
     
     fulltime2=datetime.now()
     print("Finished, total time = %.1f seconds"%((fulltime2-fulltime1).total_seconds()))
@@ -476,12 +477,12 @@ def meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpo
     
     # write properties to CSV
     dataFrame=pd.DataFrame.from_dict(dataDict)
-    dataFrame.to_csv(path+'Mesh_Properties.csv')
+    dataFrame.to_csv(outpath / 'Mesh_Properties.csv')
     
     end_time = (datetime.now() - begin_time)
     print('Execution time: ' + str(end_time))
     if saveMeshParams==True:
-        with open(os.path.join(path,'MeshParameters.txt'), 'a') as file:
+        with open(os.path.join(outpath,'MeshParameters.txt'), 'a') as file:
            file.write('\n')
            file.write('Execution Time: ' + str(end_time) + ' \n')
     
