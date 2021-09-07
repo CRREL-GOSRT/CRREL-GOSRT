@@ -8,7 +8,7 @@ Created on Fri Sep  3 16:04:42 2021
 from file_pathnames import *
 
 import sys
-# sys.path.append('C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\CRREL-GOSRT\\main')
+sys.path.append(CODE_PATH)
 import ImageSeg
 import Utilities as util
 from main import PhotonTrack

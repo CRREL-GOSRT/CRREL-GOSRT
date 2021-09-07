@@ -1,5 +1,6 @@
+from file_pathnames import *
 import sys
-sys.path.append("C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\CRREL-GOSRT\\main")
+sys.path.append(CODE_PATH)
 import DrawShapes,CRRELPolyData
 # import RenderFunctions
 import RTcode

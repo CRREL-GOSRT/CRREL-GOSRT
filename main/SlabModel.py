@@ -1,8 +1,9 @@
+from file_pathnames import *
 import sys
 import numpy as np
 import pandas as pd
 import glob as glob
-sys.path.append("/Users/rdcrltwl/Desktop/NewRTM")
+sys.path.append(CODE_PATH)
 from main import BRDFFunctions as BRDFFunc
 import os
 

@@ -29,8 +29,6 @@
       September 2021
 """
 
-# import sys
-# sys.path.append('C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\CRREL-GOSRT\\main')
 import vtk
 import pandas as pd
 import numpy as np
