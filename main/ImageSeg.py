@@ -67,7 +67,7 @@ from datetime import datetime, timedelta
 import os
 from pathlib import Path
     
-def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,minGrainSize,decimate_val,check=True):
+def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,check=True,savePropsToCsv=True,saveMeshParams=True):
     
     """
     This function generates a mesh from binarized microCT
@@ -98,39 +98,17 @@ def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,min
                 - Note that in this figure, the air space will plot as dark purple (0).
         
     """
-    begin_time = datetime.now()
+    # begin_time = datetime.now()
     
     ## Flag to indicate, that depths come from a text file, otherwise, they are numbered according to PNG filenames.
     FromTextFile=False                                                                                                                             
     
-    # Other input and output options that can be adjusted
-    fullMeshName='CRREL_MESH.vtk' ## Name of FULL Mesh .VTK file. (i.e., mesh created by aggregating all the grains)
-    savePropsToCsv=True ## Saves properties of mesh as determined by watershed segmentation algorithm to a csv file.
-    saveMeshParams=True ## Writes out parameters used in mesh generation to keep track of various tests run
-    
-    ## Bottom most sample depth (example: subsamples of 5.5 mm height, Ztop-5.5) - Currently set to automatically generate a cube
-    Zbot=Ztop-(XYend-XYstart)
-    
-    ## Kind of arbitrary, but helps separate snow from non-snow in each 2D image
-    ## You should not have to change this, so long as the images are already binarized.
-    thresh=0.9
-    
     ## Properties related to file structure / resolution.
-    csvIndexStart=2
-    voxelRes=19.88250/1000. ## in millimeters, given in microCT log file                      
+    csvIndexStart=2                     
     txtFilePfx='batman1'
     
     alpha=voxelRes
-    create_individual=True  # Option to output individual grain meshes as well as the full mesh
     binary_path=''
-    
-    #%% ### Shouldn't need to edit too much below this line!!!
-    
-    ###
-    ###
-    ###
-    
-    ###
     
     # Text file describing sample depths
     # textpath= os.path.join(folder,binary_path.split('/')[0],txtFilePfx)
@@ -140,20 +118,20 @@ def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,min
     # #path = os.path.dirname(path)
     # if not os.path.exists(path):
     #     os.makedirs(path)
+    
+    # Bottom most sample depth (example: subsamples of 5.5 mm height, Ztop-5.5) - Currently set to automatically generate a cube
+    Zbot=Ztop-(XYend-XYstart)
+    # Sample depth range
     Zrange=[Zbot,Ztop]
     
     # Saves mesh parameters for reviewing/testing purposes
     if saveMeshParams==True:
         with open(os.path.join(outpath,'MeshParameters.txt'), 'w') as file:
            file.write("File Created on %s \n"%datetime.now().strftime('%c'))
-           file.write("Grain segmentation method = Watershed segmentation \n")
            file.write("XYStart, XYEnd =  %.1f, %.1f \n"%(XYstart,XYend))
-           file.write("Minimum Grain Size Set To: %.2f (mm) \n"%minGrainSize)
-           file.write("Points allowed on border = %i  \n"%allowedBorder)
-           file.write("Minimum number of points allowed per grain = %i \n"%minpoints)
-           file.write("Binary image segmentation threshold = %.1f \n"%thresh)
            file.write("Voxel Resolution= %.6f (mm) \n"%voxelRes)
-           file.write("Decimate value for contour method = %.1f \n"%decimate_val)
+           file.write("Binary image segmentation threshold = %.1f \n"%thresh)
+           
            
     # If there is a text file describing sample depths, read that in
     if FromTextFile == True:
@@ -217,6 +195,10 @@ def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,min
     print("Array Size:",np.shape(SNOW))
     origin_mm = np.array([XYstart, XYstart, np.min(Z)])
     
+    return SNOW,X,Y,Z,origin_mm
+    
+def GrainSeg(SNOW,voxelRes,minGrainSize,outpath,thresh=0.9,saveMeshParams=True):
+    
     # create arrays where non-snow pixels are 0 (SNOW_IN) or snow pixels are set to 0 (SNOW_OUT)
     SNOW_IN=np.ma.masked_less(SNOW,thresh)  # anything less than threshold (0.9) is masked
     SNOW_OUT=np.ma.masked_array(np.ones_like(SNOW),mask=~SNOW_IN.mask).filled(0.0) # creates an array of ones and then masks and sets snow pixels to 0
@@ -272,6 +254,8 @@ def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,min
     if saveMeshParams==True:
         with open(os.path.join(outpath,'MeshParameters.txt'), 'a') as file:
            file.write('\n')
+           file.write("Grain segmentation method = Watershed segmentation \n")
+           file.write("Minimum Grain Size Set To: %.2f (mm) \n"%minGrainSize)
            file.write('Total number of grains = %i \n' %len(properties))
            file.write('Mean grain radius = %.2f \n' %(np.mean(radius)))
            file.write('Median grain radius = %.2f \n' %(np.median(radius)))
@@ -279,9 +263,10 @@ def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,min
            file.write('Sample volume before meshing = %.2f mm^3 \n' % (totalvol*1000**3))
     
     grains=np.arange(np.min(grain_labels),np.max(grain_labels)) # rearrange grains in min-max order
-    newPoly=True
-    print("Creating Volume, this will take a while")
-    fulltime1=datetime.now()
+    
+    return grains,grain_labels,properties
+  
+def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorder,minpoints,decimate_val,outpath,fullMeshName,saveMeshParams=True,savePropsToCsv=True,check=True,create_individual=True):
     
     # If option selected, start creating data dictionary to write out properties to a CSV
     if savePropsToCsv == True:
@@ -292,11 +277,22 @@ def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,min
         dataDict['Center z (mm)'] = []
         dataDict['Radius (mm)'] = []
         dataDict['Volume (mm^3)'] = []
-  
-#%%################################################################################################
+        
+    print("Creating Volume, this will take a while")
+    fulltime1=datetime.now()
+    begin_time = datetime.now()
+    
+    if saveMeshParams==True:
+        with open(os.path.join(outpath,'MeshParameters.txt'), 'a') as file:
+           file.write('\n')
+           file.write("Points allowed on border = %i  \n"%allowedBorder)
+           file.write("Minimum number of points allowed per grain = %i \n"%minpoints)
+           file.write("Decimate value for contour method = %.1f \n"%decimate_val)
+           
     ### Here's where we start the main mesh-building loop! ###
     for gdx, grain in enumerate(grains[1:]):
         time1=datetime.now()
+        newPoly=True
         if gdx == 0:
             print("On Grain %i of %i"%(grain,len(grains)))
         else:
@@ -480,13 +476,12 @@ def meshgen(path,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,min
     dataFrame.to_csv(outpath / 'Mesh_Properties.csv')
     
     end_time = (datetime.now() - begin_time)
-    print('Execution time: ' + str(end_time))
+    print('Mesh Generation Execution Time: ' + str(end_time))
     if saveMeshParams==True:
         with open(os.path.join(outpath,'MeshParameters.txt'), 'a') as file:
            file.write('\n')
-           file.write('Execution Time: ' + str(end_time) + ' \n')
-    
-    # sys.exit()
+           file.write('Mesh Generation Execution Time: ' + str(end_time) + ' \n')
+
 
 #%% Plots
 
