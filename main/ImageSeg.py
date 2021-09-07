@@ -1,33 +1,17 @@
-""" This file is the main script for generating a mesh from binarized microCT
-    image stacks. The output is a VTK 3D mesh file, options for creating meshes
-    for individual grains or the full sample.
-
+""" This file contains the main functions for generating a mesh from binarized microCT
+    image stacks.
 
     Notes
     -----
       First Created by Ted Letcher January 2021
-      Updated by Julie Parno May 2021
+      Updated by Julie Parno September 2021
       
-      
-    Example for generating mesh
-    -----------------------------     
-
-      import ImageSeg
-      
-      path='F:\\Snow_Optics\\MicroCT_Data\\1Feb_UVD_Pit1'
-      subpath = 'Sample_1_20-13cm\\1Feb_UVD_Pit1_1_1\\1Feb_UVD_Pit1_1_1_Rec\\VOI\\Snow'
-      outpath = 'contour\\1Feb_UVD_Pit1\\1Feb_UVD_Pit1_1_1\\'  # Output Path for .vtk files ( set equal to subpath if you just want it there)
-      XYstart = 3.0
-      XYend = 12.0
-      depthTop = 200
-      Ztop = 195.0  # Top most sample depth
-      allowedBorder = 10000000  # Number of points allowed to be on a mesh border
-      minpoints = 25  # Minimum number of points allowed for each grain
-      minGrainSize = 0.3 # This sets the minimum grainsize (in mm) for the peak-local-max function
-      decimate = 0.9
-
-      ImageSeg.meshgen(path,subpath,outpath,XYstart,XYend,depthTop,Ztop,allowedBorder,minpoints,minGrainSize,decimate,check=False)
     
+    Functions Included
+    -----------------------------     
+    ImagestoArray  - Converts binarized MicroCT image stacks to numpy array
+    GrainSeg  - Performs snow grain segmentation using watershed segmentation currently
+    MeshGen  - Generates a mesh of the snow grains, can do both individual grains and full sample mesh
     
     
     Requirements
@@ -42,7 +26,7 @@
 
     Last modified:
     ---------------
-      July 2021
+      September 2021
 """
 
 # import sys
@@ -65,59 +49,51 @@ from skimage.measure import marching_cubes_lewiner
 from skimage.filters import gaussian
 from datetime import datetime, timedelta
 import os
+import shutil
 from pathlib import Path
+
+
     
-def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,check=True,savePropsToCsv=True,saveMeshParams=True):
+def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,savePropsToCsv=True,saveMeshParams=True):
     
     """
-    This function generates a mesh from binarized microCT
-    image stacks. The output is a VTK 3D mesh file, options for creating meshes
-    for individual grains or the full sample.
+    This function reads in a microCT binarized image stack and generates arrays necessary for grain segmentation and mesh generation
     
     Note that depths are measured from ground (d=0)
     
     INPUTS:
         path: main path for microCT data
-        subpath: Sub-folder with microCT images in it.
-        outpath: Output Path for .vtk files ( set equal to subpath if you just want it there)
+        outpath: Output Path for .vtk files
         XYstart: The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
         XYend: The ending point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
         depthTop: Top snow depth of scanned sample (in mm) --> Usually corresponds to file name in "subpath" variable
            * Note that depthTop is critically important in getting the depth-oriented sample correct!
         Ztop: Top depth selected for mesh sample subset (must be within the sample depth)
-        allowedBorder: Number of points allowed to be on a mesh border. This can eliminate "flat" grain boundaries that are up against the mesh boundary.
-            * Larger number = less restrictive (if you want everything set to 1E6 or more)
-        minpoints: Minimum number of points allowed for each grain
-        minGrainSize: This sets the minimum grainsize (in mm) for the peak-local-max function for watershed segmentation, generally 0.3 - 0.8mm, depending on sample 
-        decimate_val: The decimal percentage of mesh triangles to eliminate in decimation (recommended: 0.9)
-        check: If True, will stop after first grain to allow for visual inspection prior to running the whole code
-            If True, it will:
-                - return a vtk window of a single grain for visual inspection, it will also
-                - plot up a 2D image slice showing the grain separation by coloring each grain differently
-                - Ideally, you want the boundaries to mostly fall along grain-necks and separate areas that look distinct
-                - Note that in this figure, the air space will plot as dark purple (0).
+        voxelRes: voxel resolution in mm from microCT log
+        thresh: threshold for snow/air boundary in binarized microCT images, recommend 0.9
+        savePropsToCsv: option to save sample properties to CSV file
+        saveMeshParams: option to save mesh parameter information
+     
+    RETURNS:
+        SNOW: binary 3D array where 1 is snow and 0 is air
+        grid: list of numpy arrays that represent coordinate matrices for X,Y,Z axes of sample array
         
     """
     # begin_time = datetime.now()
     
-    ## Flag to indicate, that depths come from a text file, otherwise, they are numbered according to PNG filenames.
+    # Flag to indicate, that depths come from a text file, otherwise, they are numbered according to PNG filenames.
     FromTextFile=False                                                                                                                             
     
-    ## Properties related to file structure / resolution.
-    csvIndexStart=2                     
-    txtFilePfx='batman1'
-    
-    alpha=voxelRes
-    binary_path=''
+    ## File definitions to find text file describing sample depths                
+    txtFilePfx='batman1'  ## need to change if going to use this feature
     
     # Text file describing sample depths
-    # textpath= os.path.join(folder,binary_path.split('/')[0],txtFilePfx)
+    textpath= os.path.join(path,txtFilePfx)
     
-    # # this sets the output path!
-    # path= os.path.join(path,'VTK',outpath)
-    # #path = os.path.dirname(path)
-    # if not os.path.exists(path):
-    #     os.makedirs(path)
+    # Check to see if output path exists, and if not, create it
+    if not os.path.exists(outpath):
+        print('Outpath does not exist, creating new directory at ' + str(outpath))
+        os.makedirs(outpath)
     
     # Bottom most sample depth (example: subsamples of 5.5 mm height, Ztop-5.5) - Currently set to automatically generate a cube
     Zbot=Ztop-(XYend-XYstart)
@@ -133,7 +109,7 @@ def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,c
            file.write("Binary image segmentation threshold = %.1f \n"%thresh)
            
            
-    # If there is a text file describing sample depths, read that in
+    # # If there is a text file describing sample depths, read that in
     if FromTextFile == True:
         textfile=glob.glob(textpath)[0]
         data=pd.read_csv(textfile,header=41)                                   
@@ -193,12 +169,32 @@ def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,c
     # create grid from new selected image field, where Z is the bottom image of the stack (lowest depth, highest voxel #)
     X,Y,Z=np.meshgrid(X,Y,Z)
     print("Array Size:",np.shape(SNOW))
+    grid = [X,Y,Z]
     origin_mm = np.array([XYstart, XYstart, np.min(Z)])
     
-    return SNOW,X,Y,Z,origin_mm
-    
+    return SNOW,grid
+
+
+   
 def GrainSeg(SNOW,voxelRes,minGrainSize,outpath,thresh=0.9,saveMeshParams=True):
+    """
+    This function reads in a binarized snow/air array and runs a watershed segmentation
+    to separate out individual snow grains
     
+    INPUTS:
+        SNOW: binary 3D array where 1 is snow and 0 is air
+        voxelRes: voxel resolution in mm from microCT log
+        minGrainSize: This sets the minimum grainsize (in mm) for the peak-local-max function for watershed segmentation, generally 0.3 - 0.8mm, depending on sample 
+        outpath: Output Path for .vtk files
+        thresh: threshold for snow/air boundary in binarized microCT images, recommend 0.9
+        saveMeshParams: option to save mesh parameter information
+    
+    RETURNS:
+        grain_labels: numpy array where 0 indicates air and all individual snow grains are marked with a unique number
+        grains: array that lists grain numbers in increasing order
+        properties: list of region properties for each grain (watershed), output by watershed segmentation algorithm
+        
+    """
     # create arrays where non-snow pixels are 0 (SNOW_IN) or snow pixels are set to 0 (SNOW_OUT)
     SNOW_IN=np.ma.masked_less(SNOW,thresh)  # anything less than threshold (0.9) is masked
     SNOW_OUT=np.ma.masked_array(np.ones_like(SNOW),mask=~SNOW_IN.mask).filled(0.0) # creates an array of ones and then masks and sets snow pixels to 0
@@ -265,8 +261,47 @@ def GrainSeg(SNOW,voxelRes,minGrainSize,outpath,thresh=0.9,saveMeshParams=True):
     grains=np.arange(np.min(grain_labels),np.max(grain_labels)) # rearrange grains in min-max order
     
     return grains,grain_labels,properties
-  
-def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorder,minpoints,decimate_val,outpath,fullMeshName,saveMeshParams=True,savePropsToCsv=True,check=True,create_individual=True):
+
+    
+ 
+def MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,
+            minpoints,decimate_val,outpath,fullMeshName,saveMeshParams=True,
+            savePropsToCsv=True,check=True,create_individual=True):
+    
+    """
+    This function generates a sample mesh and individual grain meshes, if selected, via
+    a contour/isoline method and Marching Cubes (Lewiner et al., 2003). The function writes
+    out mesh VTK file(s) to specified directory.
+    
+    INPUTS:
+        grains: array that lists grain numbers in increasing order
+        grain_labels: numpy array where 0 indicates air and all individual snow grains are marked with a unique number
+        properties: list of region properties for each grain (watershed), output by watershed segmentation algorithm
+        voxelRes: voxel resolution in mm from microCT log
+        grid: list of numpy arrays that represent coordinate matrices for X,Y,Z axes of sample array
+        allowedBorder: Number of points allowed to be on a mesh border. This can eliminate "flat" grain boundaries that are up against the mesh boundary.
+            * Larger number = less restrictive (if you want everything set to 1E6 or more)
+        minpoints: Minimum number of points allowed for each grain
+        decimate_val: The decimal percentage of mesh triangles to eliminate in decimation (recommended: 0.9)
+        outpath: Output Path for .vtk files
+        fullMeshName: filename for full sample mesh (*.vtk)
+        saveMeshParams: option to save mesh parameter information 
+        savePropsToCsv: option to save sample properties to CSV file
+        check: If True, will stop after first grain to allow for visual inspection prior to running the whole code
+            If True, it will:
+                - return a vtk window of a single grain for visual inspection, it will also
+                - plot up a 2D image slice showing the grain separation by coloring each grain differently
+                - Ideally, you want the boundaries to mostly fall along grain-necks and separate areas that look distinct
+                - Note that in this figure, the air space will plot as dark purple (0).
+        create_individual: option to save individual grain VTK files in addition to the full mesh, generally recommended if space allows
+        
+    """
+    
+    # Unpack grid
+    X,Y,Z = grid[0],grid[1],grid[2]
+    
+    # Define origin of grid
+    origin_mm = np.array([np.min(X),np.min(Y),np.min(Z)])
     
     # If option selected, start creating data dictionary to write out properties to a CSV
     if savePropsToCsv == True:
@@ -277,7 +312,15 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
         dataDict['Center z (mm)'] = []
         dataDict['Radius (mm)'] = []
         dataDict['Volume (mm^3)'] = []
-        
+     
+    # Create directory for grains with no border for phase function calculation
+    # and create empty list to populate with borderless grains
+    GrainPath = os.path.join(outpath,'GRAINS','')
+    # Check to see if grain path exists, and if not, create it
+    if not os.path.exists(GrainPath):
+        os.makedirs(GrainPath)
+    borderless = []
+    
     print("Creating Volume, this will take a while")
     fulltime1=datetime.now()
     begin_time = datetime.now()
@@ -288,11 +331,11 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
            file.write("Points allowed on border = %i  \n"%allowedBorder)
            file.write("Minimum number of points allowed per grain = %i \n"%minpoints)
            file.write("Decimate value for contour method = %.1f \n"%decimate_val)
-           
+       
     ### Here's where we start the main mesh-building loop! ###
+    newPoly=True
     for gdx, grain in enumerate(grains[1:]):
         time1=datetime.now()
-        newPoly=True
         if gdx == 0:
             print("On Grain %i of %i"%(grain,len(grains)))
         else:
@@ -348,8 +391,8 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
                 z1=np.min(Z) + properties[gdx].centroid[2]*voxelRes
                 print(x1,y1,z1)
     
-    #%% ### Mesh generation via contour method and Marching Cubes
-         
+    
+            ## Mesh generation via contour method and Marching Cubes
             grain_select = (grain_labels==grain)  # boolean array where grain is True, all else is False
             
             # Extract the subset of the large image that corresponds to this grain, this should help with code speed
@@ -407,7 +450,7 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
             # mesh.save(os.path.join(path,'mc_mesh_%i.vtk')%grain)
         
         
-    #%% This section writes VTK file for individual grains, if option is selected, and combines grains into full sample mesh
+        # This section writes VTK file for individual grains, if option is selected, and combines grains into full sample mesh
         # Define min/max bounds of each dimension
         xBounds=[np.min(x),np.max(x)]
         yBounds=[np.min(y),np.max(y)]
@@ -418,14 +461,14 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
             polyShell=CRRELPolyData._CRRELPolyData(mesh,xBounds,yBounds,zBounds,voxelRes,100.,description='REAL Snow Mesh')
     
             if create_individual == True:
-                print(os.path.join(outpath,'Grain_%i.vtk'%grain))
-                polyShell.WritePolyDataToVtk(outpath / 'Grain_%i.vtk'%grain)  # write VTK file for individual grain
+                print(outpath / 'Grain_{}.vtk'.format(grain))
+                polyShell.WritePolyDataToVtk(os.path.join(outpath, 'Grain_{}.vtk'.format(grain)))  # write VTK file for individual grain
             newPoly=False
         else:
             poly1=CRRELPolyData._CRRELPolyData(mesh,xBounds,yBounds,zBounds,voxelRes,100.,description='REAL Snow Mesh')
     
             if create_individual == True:
-                poly1.WritePolyDataToVtk(outpath / 'Grain_%i.vtk'%grain)  # write VTK file for individual grain
+                poly1.WritePolyDataToVtk(os.path.join(outpath, 'Grain_{}.vtk'.format(grain)))  # write VTK file for individual grain
     
             polyShell.appendPoly(poly1)
     
@@ -467,7 +510,7 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
     RenderFunctions.ShowRender(renderer,camera=camera)
     
     if check == False:
-        polyShell.WritePolyDataToVtk(outpath / fullMeshName)  # write out full sample mesh
+        polyShell.WritePolyDataToVtk(os.path.join(outpath,fullMeshName))  # write out full sample mesh
     
     fulltime2=datetime.now()
     print("Finished, total time = %.1f seconds"%((fulltime2-fulltime1).total_seconds()))
@@ -487,29 +530,3 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
         with open(os.path.join(outpath,'MeshParameters.txt'), 'a') as file:
            file.write('\n')
            file.write('Mesh Generation Execution Time: ' + str(end_time) + ' \n')
-
-
-#%% Plots
-
-def slice_plot(path,outpath,pltidx,voxelRes,save=True):
-    outpath = os.path.join(path,'VTK',outpath)
-    
-    reader = vtk.vtkPolyDataReader()
-    reader.SetFileName(os.path.join(outpath,'CRREL_MESH.vtk'))
-    reader.Update()
-    shell = reader.GetOutput()
-    
-    snowbin = np.load(os.path.join(outpath,'microCT_arr.npy'))
-    
-    ## Plot a slice of the mesh to compare with microCT scan binary image
-    m = pv.PolyData(shell)
-    plt.figure(figsize=(12,9))
-    ax=plt.subplot(1,1,1)
-    slice_depth = m.bounds[4]+(pltidx)*voxelRes      
-    ax.imshow(snowbin[:,:,pltidx][::-1],cmap='binary_r',extent=[m.bounds[0],m.bounds[1],m.bounds[2],m.bounds[3]])
-    slices = m.slice(normal='z',origin=(m.center[0],m.center[1],slice_depth))
-    pts = slices.points
-    ax.plot(pts[:,0],pts[:,1],'.')
-    plt.title('Mesh vs MicroCT at %.4f mm depth' % slice_depth)
-    if save==True:
-        plt.savefig(os.path.join(outpath,('mesh_compare_%.4f.png' % slice_depth)))
