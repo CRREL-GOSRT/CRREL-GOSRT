@@ -322,7 +322,10 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
             total_seconds=(time2-time1).total_seconds()
             print("Border grain, skipping! %i"%total_border)
             continue
-    
+        
+        if total_border == 0:
+            borderless.append(grain)
+        
         if len(x) < minpoints:
             print("Too few points, assuming grain is too small, skipping!")
             continue
@@ -470,6 +473,9 @@ def MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorde
     print("Finished, total time = %.1f seconds"%((fulltime2-fulltime1).total_seconds()))
     plt.show()
     
+    # copy over VTK files for first 30 borderless grains to GRAINS folder
+    for i in range (0,30):
+        shutil.copy(os.path.join(outpath,'Grain_{}.vtk'.format(borderless[i])),os.path.join(GrainPath,'Grain_{}.vtk'.format(borderless[i])))
     
     # write properties to CSV
     dataFrame=pd.DataFrame.from_dict(dataDict)
