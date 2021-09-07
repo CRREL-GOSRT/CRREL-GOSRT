@@ -67,3 +67,15 @@ fig,pf,thetas,dtheta=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainP
 # Save figure
 fig.savefig(os.path.join(OPT_PROP_OUTPATH,'OptProps.png'),dpi=90)
 plt.show()
+
+#%% Run Slab Model
+
+import SlabModel
+
+Slab=SlabModel.SlabModel(namelist='Mynamelist.txt')
+Slab.Initialize()
+Azi,Zenith=Slab.GetZenith()
+
+# 
+Albedo,Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=10000)
+
