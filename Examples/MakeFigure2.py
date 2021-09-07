@@ -1,7 +1,7 @@
 ##Polar Phase.py
 ##Checks Phase function properties from Spheres
+from file_pathnames import *
 import sys
-sys.path.append("C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\CRREL-GOSRT\\main")
 import DrawShapes,CRRELPolyData
 import RenderFunctions
 import RTcode
@@ -15,9 +15,22 @@ import pandas as pd
 from datetime import datetime
 import os
 import glob as glob
-import test_rtm_angles as trm
-# import RandomExternalFiring as ref
-# import SampleSphere as ssphere
+
+
+def cart2sph(x, y, z):
+    hxy = np.hypot(x, y)
+    r = np.hypot(hxy, z)
+    el = np.arctan2(z, hxy)
+    az = np.arctan2(y, x)
+    return az, el, r
+
+
+def sph2cart(azi,el,r):
+    x = r * np.sin(el) * np.cos(azi)
+    y = r * np.sin(el) * np.sin(azi)
+    z = r * np.cos(el)
+    return x, y, z
+
 
 print(1000./(2.*np.pi)*0.550/1000.)
 meanRadius = 1000./(2.*np.pi)*0.550/1000.
@@ -36,7 +49,6 @@ AziBounds=[-np.pi,np.pi]
 nBins=180
 
 VoxelRes=19.88250/1000.
-MaterialPath = 'C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\Code\\NewRTM\\Materials\\'
 exportPath=''
 radii=[]
 wavelens=[900]
@@ -71,9 +83,9 @@ for wdx,wavelen in enumerate(wavelens):
             'Rendered Snow Grain from microCT']
 
 
-    GrainsPath='C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\MicroCT_Data\\12Feb_UVD\\VTK\\contour\\test\\Pit1_1_3\\ssalb\\GRAINS\\'
+    GrainsPath=os.path.join(VTK_DATA_OUTPATH,'GRAINS')
 
-    outpath='C:\\Users\\RDCRLJTP\\Documents\\Projects\\Snow_Optics\\MicroCT_Data\\12Feb_UVD\\VTK\\contour\\test\\Pit1_1_3\\ssalb\\'
+    outpath=OPT_PROP_OUTPATH
 
     thetas=np.linspace(0,np.pi,nBins)
     dtheta=np.abs(thetas[1]-thetas[0])
@@ -142,7 +154,7 @@ for wdx,wavelen in enumerate(wavelens):
             # print('column bounds = ', CRRELPD.xBounds,CRRELPD.yBounds,CRRELPD.zBounds)
             CRRELPD.WritePolyDataToVtk(outpath+shape+"_"+str(LoA[sdx])+'.vtk')
 
-        CRRELPD.AssignMaterial('ice',filePath=MaterialPath)
+        CRRELPD.AssignMaterial('ice',filePath=MATERIAL_PATH)
         
         nIce,kIce,Nc=CRRELPD.GetRefractiveIndex(wavelen,units=wavelenUnits)
         
@@ -151,14 +163,6 @@ for wdx,wavelen in enumerate(wavelens):
 
         if voxelize == True:
             CRRELPD.Voxelize()
-
-        # box = [[CRRELPD.xBounds[0],CRRELPD.xBounds[1]], # x bounds 
-              # [CRRELPD.yBounds[0],CRRELPD.yBounds[1]], # y bounds 
-              # [CRRELPD.zBounds[0],CRRELPD.zBounds[1]]] # z bounds 
-
-        # numDirs   = numPhotons
-        # numPerDir = 1
-        # srcPts, tgtPts = ssphere.RandomExternalFiring(box, numDirs, numPerDir)
 
         for ndx in range(numPhotons):
             x1=np.random.uniform(CRRELPD.xBounds[0],CRRELPD.xBounds[1])
@@ -176,7 +180,7 @@ for wdx,wavelen in enumerate(wavelens):
             # Thetas=np.random.uniform(*ThetaBounds)
             # Azis=np.random.uniform(*AziBounds)
 
-            # x2,y2,z2=trm.sph2cart(Azis,Thetas,rs)
+            # x2,y2,z2= sph2cart(Azis,Thetas,rs)
             # x2,y2,z2 = x2+x1,y2+y1,z2+z1
             # x2=CRRELPD.xBounds[1]
 
@@ -217,9 +221,7 @@ for wdx,wavelen in enumerate(wavelens):
             # polar=complex(0,inter)
 
             weights,COSPHIS,intersections,dummy=RTcode.ParticlePhaseFunction(CRRELPD,p11,p22,normalsMesh,obbTree,nIce,kIce,absorb=True)
-            # print('weights  = ',weights)
-            # print('angles =',COSPHIS)
-            # print('intersections =',intersections)
+
 
             if dummy == True:
                 continue
