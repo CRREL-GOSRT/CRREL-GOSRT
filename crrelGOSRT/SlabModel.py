@@ -2,7 +2,7 @@ import sys
 import numpy as np
 import pandas as pd
 import glob as glob
-import BRDFFunctions as BRDFFunc
+from crrelGOSRT import BRDFFunctions as BRDFFunc
 import os
 
 ## For debug only!

@@ -1,8 +1,5 @@
 import sys
-sys.path.append("/Users/rdcrltwl/Desktop/CRRELRTM/CRREL-GOSRT/main")
-import DrawShapes,CRRELPolyData
-import RenderFunctions
-import RTcode
+from crrelGOSRT import CRRELPolyData,RenderFunctions,RTcode
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy import stats

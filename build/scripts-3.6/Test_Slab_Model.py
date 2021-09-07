@@ -49,10 +49,13 @@ def addAlbedo(ax,diams=[0.15],labels=True):
         plt.xlim(0.3,2)
 
 Slab=SlabModel.SlabModel()
-Slab.Initialize()
+
 Azi,Zenith=Slab.GetZenith()
 
+print(Azi,Zenith)
+sys.exit()
 
+depths=[500,100,60,30,20]
 
 WaveLength=np.arange(400,1300,50)
 
@@ -63,12 +66,17 @@ cols=Slab.WaveLengthToColor(WaveLength, gamma=0.8)
 
 plt.figure(figsize=(10,10))
 ax=plt.subplot(111)
-Albedo, Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=nPhotons)
 
-#Slab.WriteSpectralToFile('/Users/rdcrltwl/Desktop/NewRTM/Examples/multi_21.5cm.txt',
-#    nPhotons,Zenith,Azi,WaveLength,Albedo,Absorption,Transmiss,filename='21.5cm MultiLayer')
+    for dep in depths:
+        Slab.namelistDict['LayerTops']=[dep,0]
+        Slab.Initialize()
+        Albedo, Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=nPhotons)
 
-plt.plot(WaveLength,Albedo,lw='2',color='r',label="Test Spectral Albedo")
+        Slab.WriteSpectralToFile('/Users/rdcrltwl/Desktop/MammothMountain_0504/single_%scm.txt'%dep,
+            nPhotons,Zenith,Azi,WaveLength,Albedo,Absorption,Transmiss,filename='$s_cm Single Layer Large'%dep)
+
+        plt.plot(WaveLength,Albedo,lw='2',label="Test Spectral Albedo %s"%dep)
+
 addAlbedo(ax,[0.3],labels=False)
 
 ## SHOW VISIBLE SPECTRUM!

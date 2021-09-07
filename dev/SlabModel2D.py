@@ -322,6 +322,7 @@ class SlabModel:
     def SetSnowSurface(self,x,y,z,nPhotons,Zenith,Azimuth,SlopeNorm=False):
         """Sets the height of the snow surface and returns photon starting positions and initial vectors"""
         import pyvista as pv
+        import vtk
         self.__xCoords=x[:]
         self.__yCoords=y[:]
         self.__zTop=z[:]
@@ -331,6 +332,19 @@ class SlabModel:
         cloud = pv.PolyData(points)
         vol = cloud.delaunay_2d()
         vol.compute_normals(inplace=True,flip_normals=True)
+
+        obbTree = vtk.vtkOBBTree()
+        obbTree.SetDataSet(vol)
+        obbTree.BuildLocator()
+
+        # Create a new 'vtkPolyDataNormals' and connect to triangulated surface mesh
+        normalsCalcMesh = vtk.vtkPolyDataNormals()
+        normalsCalcMesh.SetInputData(vol)
+        normalsCalcMesh.ComputePointNormalsOff()
+        normalsCalcMesh.ComputeCellNormalsOn()
+        normalsCalcMesh.Update()
+        normalsMesh = normalsCalcMesh.GetOutput().GetCellData().GetNormals()
+        normalsCalcMesh=None
 
         xrands=[]
         yrands=[]
@@ -386,7 +400,7 @@ class SlabModel:
             yrands.append(ypt)
             zrands.append(zpt)
 
-        return xrands, yrands,zrands,cosUs,vol
+        return xrands, yrands,zrands,cosUs,vol,normalsMesh,obbTree
 
     def __RussianRoulette(self,Photons):
         """
@@ -553,6 +567,64 @@ class SlabModel:
         return layerIds, Scatter, Fice, extCoeff, Fsoot
 
 
+    def RayCastSimple(self,obbTree,normalsMesh,pSource,pTarget):
+            import vtk
+            # Check for intersection with line
+            pointsIntersection = vtk.vtkPoints()   # Contains intersection point coordinates
+            cellIds = vtk.vtkIdList()              # Contains intersection cell ID
+
+            # Perform intersection test
+            code = obbTree.IntersectWithLine(pSource, pTarget, pointsIntersection, cellIds)
+
+            # Total number of intersection points
+            numIntersections = pointsIntersection.GetNumberOfPoints()
+
+
+            if code == 0:
+                isHit = False
+
+                # Return empty variables
+                intersectionPt = np.array([])
+                cellIdIntersection = []
+                normalMeshIntersection = []
+
+            else:
+                isHit = True
+
+                pointsIntersectionData = pointsIntersection.GetData()
+
+                # Cycle through intersection points until reaching surface that has
+                # correct normal direction
+                found = False
+                idx = 0
+
+                v_i = np.array(pTarget) - np.array(pSource)
+
+                while not found:
+                    # Check if there are any intersection points left
+                    if idx >= numIntersections:
+                        isHit = False
+
+                        # Return empty variables
+                        intersectionPt = np.array([])
+                        cellIdIntersection = []
+                        normalMeshIntersection = []
+
+                        found = True
+
+                    else:
+                        v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
+                        intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
+                        cellIdIntersection = cellIds.GetId(idx)
+                        normalMeshIntersection = v_n
+                        found = True
+                        break
+
+                    idx += 1
+
+            return intersectionPt, cellIdIntersection, normalMeshIntersection, isHit
+
+
     def PrintSlabProps(self):
         """This function prints out to the terminal screen, the slab physical and optical properties from each snow layer!"""
 
@@ -593,7 +665,7 @@ class SlabModel:
 
 
         print("Setting Snow Surface ... This may take a few moments....")
-        xx, yy,zz,cosU,pvVol=self.SetSnowSurface(x,y,z,nPhotons,Zenith,Azimuth)
+        xx, yy,zz,cosU,pvVol,normalsMesh,obbTree=self.SetSnowSurface(x,y,z,nPhotons,Zenith,Azimuth)
         print("DONE!")
 
         ## The number of photons!
@@ -698,13 +770,12 @@ class SlabModel:
                     start=u1[:,ThroughIdx[tidx]]
                     stop=u1[:,ThroughIdx[tidx]]+cosU[:,ThroughIdx[tidx]]*1000.
                     # Perform ray trace
-                    locs, ind = pvVol.ray_trace(start, stop,first_point=True)
+                    intersectionPt, cellIdIntersection, normalMeshIntersection, isHit=self.RayCastSimple(obbTree,normalsMesh,start,stop)
                     # # Create geometry to represent ray trace
                     ray = pv.Line(start, u1[:,ThroughIdx[tidx]]+cosU[:,ThroughIdx[tidx]]*5)
-                    intersection = pv.PolyData(locs)
 
                     iter=0
-                    while intersection.n_faces == 0:
+                    if isHit == False:
                         stop=u1[:,ThroughIdx[tidx]]+cosU[:,ThroughIdx[tidx]]*(iter+1)*np.max(s[0,ThroughIdx])
                         x1,y1=stop[:2]
 
@@ -732,14 +803,10 @@ class SlabModel:
 
                     if iter == 0:
                         num+=1
-                        cell=intersection.GetCell(0)
-                        xpt=cell.GetBounds()[0]
-                        ypt=cell.GetBounds()[2]
-                        zpt=cell.GetBounds()[4]
+                        xpt,ypt,zpt=intersectionPt
                         u1[:,ThroughIdx[tidx]]=[xpt,ypt,zpt]
                         stop=np.array([xpt,ypt,zpt])
                         ray = pv.Line(start, stop)
-
 
                     p.add_mesh(ray,color='g')
                     p.add_mesh(start,color='r')
@@ -766,24 +833,18 @@ class SlabModel:
 
             for jdx, j in enumerate(WhereOutTop):
                 stop=u1[:,j]+cosU[:,j]*1000.
-                locs, ind = pvVol.ray_trace(u1[:,j], stop,first_point=True)
-                intersection = pv.PolyData(locs)
+                intersectionPt, cellIdIntersection, normalMeshIntersection, isHit=self.RayCastSimple(obbTree,normalsMesh,start,stop)
 
-                if intersection.n_faces == 0:
+                if isHit == False:
                     albedo+=Photons[j]
+                    #print(intersectionPt, cellIdIntersection, normalMeshIntersection, isHit)
                     ray = pv.Line(start,u1[:,j]+cosU[:,j]*5)
                     p.add_mesh(ray,color='lime')
                     p.add_mesh(start,color='r')
                     p.add_mesh(u1[:,j]+cosU[:,j]*5,color='fuchsia')
-
-                    p.show()
-                    sys.exit()
                     Photons[j]=0.0
                 else:
-                    cell=intersection.GetCell(0)
-                    xpt=cell.GetBounds()[0]
-                    ypt=cell.GetBounds()[2]
-                    zpt=cell.GetBounds()[4]
+                    xpt,ypt,zpt=intersectionPt
                     start=u1[:,j]
                     u1[:,j]=[xpt,ypt,zpt]
 

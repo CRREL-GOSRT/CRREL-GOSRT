@@ -5,7 +5,6 @@ class _CRRELPolyData:
 
        Note that this class is unique to the CRREL RTM, and is used throughout the larger models in place of
        standard vtk PolyData.
-       
     """
     def __init__(self,mesh,xBounds,yBounds,zBounds,resolution,density,units='mm',description='unknown'):
         import vtk
