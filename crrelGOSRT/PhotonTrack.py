@@ -1,24 +1,21 @@
-from file_pathnames import *
 import sys
-sys.path.append(CODE_PATH)
-import DrawShapes,CRRELPolyData
-# import RenderFunctions
-import RTcode
+from crrelGOSRT import CRRELPolyData,RenderFunctions,RTcode
 import numpy as np
 from matplotlib import pyplot as plt
-# from scipy import stats
+from scipy import stats
 from scipy.optimize import curve_fit
 import vtk
 import pyvista as pv
-# import pandas as pd
+import pandas as pd
 from datetime import datetime
 import glob as glob
-# import os
+import os
 
 
 def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,MaterialPath,wavelen,VoxelRes,
                                  nPhotons=1500,Absorb=True,GrainSamples=40,MaxBounce=10,PhaseBins=180,
                                  verbose=False,distScale=1.3,VoxelUnits='um',wavelenUnits='nm',plot=True,
+                                 Advanced = True,TrackThresh=0.1,TrackDepthMax=4,
                                  Multi = False, Polar = False):
 
     """ This function calls individual sub-functions to get optical properties and saves them to file for
@@ -62,7 +59,19 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                              3. Histogram of F_{ice}
                              4. Scattering Phase Function
 
+            Advanced (optional): If True, allows for multiple interactions with an irregularly shaped particle.
+            Specifically, photons that exit the particle with remaining energy greater than some threshold are checked for re-intersections with the particle.
+            Any reintersections are subsequently tracked.  Can be particularly useful for hollow facets or other hollow particles where reintersections are likely.
+            Expect significantly longer computational time when this is on.
+
+            TrackThresh (optional): Minimum energy threshold for which to track photons for re-intersections.
+
+            TrackDepthMax (optional): Maximum number of times ("depths") for which to track for reinterections.
+            Generally, most particles will go less than 3 reintersections before running out of steam, but this allows for a hard limit.
+
+            !------------------------------------------------------------------------------------------------!
             Developmental Options (Note, these are not rigorously tested, and should not be used in operation)
+            !------------------------------------------------------------------------------------------------!
 
             Multi (optional/developmental): Boolean flag to turn on the use of pvistas "vectorized" ray casting in the extinction coefficient and F_{ice}
                                             calculations.  Should lead to speed up, but doesn't quite yield the same answers as the tested sequential versions.
@@ -148,11 +157,6 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     print("Found Extinction Coefficient = %.2f after %.1f seconds"%(popt[0],(time2-time1).total_seconds()))
     print("Total Bad Photons =%i --> %.3f percent of all photons"%(bad,len(distances)*100.*bad/nPhotons))
     print("------------------------------------")
-    
-    ## Calculate Single Scattering Albedo
-    ssalb = (popt[0]-kIce)/popt[0]
-    print("Single Scattering Albedo = %.2f | WaveLength = %s"%(ssalb,wavelen))
-    print("------------------------------------")
 
     ## Next Up, F_Ice and PhaseFunction
     ###
@@ -178,11 +182,12 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     print("Computing Scattering Phase Function using %s Grain Samples..."%GrainSamples)
 
     time1=datetime.now()
-    POWER,thetas,asymmparam,PhaseText,dtheta=ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMesh,nIce,kIce,
+    POWER,thetas,PhaseText,dtheta=ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMesh,nIce,kIce,
                                                       VoxelRes_mm,verbose=verbose,Absorb=Absorb)
+
+    asymmparam = 0.5*dtheta*np.sum(np.cos(thetas)*np.sin(thetas)*POWER)
     time2=datetime.now()
     print("Finished computing the scattering phase function after %.1f seconds"%((time2-time1).total_seconds()))
-    print(asymmparam)
     print("------------------------------------")
 
     ### Now write the data out to a file!
@@ -191,9 +196,11 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Optical Properties File Created From %s \n"%VTKFilename)
        file.write("File Created on %s \n"%today)
        if Multi == True:
-           file.write("WARNING: Vectorized ray-casting through pyvista was used to generated k_ext and F_{ice}!")
+           file.write("WARNING: Vectorized ray-casting through pyvista was used to generated k_ext and F_{ice}!\n")
        file.write("Central Wavelength and refractive index: %s, %.2f \n"%(wavelen,nIce))
        file.write("Number of Photons used in Monte Carlo Sampling: %i \n"%nPhotons)
+       if Advanced == True:
+           file.write("Advanced photon-tracking that allows for multiple re-intersections with the particle was used!\n")
        file.write(PhaseText)
        file.write("Sample Volume = %.2f (mm^{3}) \n"%sampleVolumeOut)
        file.write("Estimated Sample Density = %.2f (kg m^{-3}) \n"%Density)
@@ -201,13 +208,12 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Estimated Sample Grain Diameter = %.2f (mm) \n"%GrainDiam)
        file.write("Max Number of Internal Bounces allowed in phase function and Ice Path Sampling: %i \n"%MaxBounce)
        file.write("Extinction Coefficient = %.4f (mm^{-1}) \n"%popt[0])
-       file.write("Single Scattering Albedo = %.4f \n"%ssalb)
+       file.write("Estimated Asymmetry Parameter (g) = %.2f (-) \n"%asymmparam)
        file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmean(Fice))
        file.write("Median fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmedian(Fice))
        file.write("Standard Deviation fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanstd(Fice))
        file.write("Number of bins in phase function = %i \n"%PhaseBins)
-       file.write("Angular Bin Size (radians) = %.5f \n"%dtheta)
-       file.write("Asymmetry Parameter = %.3f \n"%asymmparam)
+       file.write("Angular Bin Size (radians) = %.5f"%dtheta)
        file.write("------------------------------------------------------  \n")
        file.write("Theta (radians), Phase Function\n")
        for tdx in range(len(thetas)):
@@ -218,9 +224,12 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     if plot == True:
         ax=fig.add_subplot(2,2,4)
         ax.plot(np.degrees(thetas),POWER,label='%s'%wavelen)
+        ax.text(5,500,"g = %.2f"%asymmparam,ha='left')
         ax.set_yscale('log')
         ax.set_xlabel("Theta (degrees)")
         ax.set_ylabel("Power")
+        ax.set_xlim(0,180)
+        ax.set_ylim(0.01,10000)
         ax.grid()
         ax.legend()
         ax.set_title("Scattering Phase Function",loc='left')
@@ -228,7 +237,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     else:
         fig=None
 
-    return fig,POWER,thetas,dtheta
+    return fig
 
 def ConvertVoxel2mm(resolution,units='um'):
     """ This simple function is used to "smartly" convert the voxel resolution from the allowed units
@@ -293,7 +302,7 @@ def ComputeFice(SnowMesh,nIce,nPhotons,Polar = False, MaxBounce = 10,verbose=Fal
     Fice=[]
     missed=0
     for ii in range(nPhotons):
-        axis=np.random.randint(0,3) ## Choose random axis (x,y,z)
+        axis=np.random.randint(0,6) ## Choose random axis (x,y,z)
         if axis == 0: ## If x Axis
             x1,x2=SnowMesh.xBounds[0],SnowMesh.xBounds[1]
             y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
@@ -302,10 +311,23 @@ def ComputeFice(SnowMesh,nIce,nPhotons,Polar = False, MaxBounce = 10,verbose=Fal
             x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
             y1,y2=SnowMesh.yBounds[0],SnowMesh.yBounds[1]
             z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
-        else: ## If z Axis
+        elif axis == 2: ## If z Axis
             x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
             y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
             z1,z2=SnowMesh.zBounds[0],SnowMesh.zBounds[1]
+
+        elif axis == 3: ## If x Axis
+            x1,x2=SnowMesh.xBounds[1],SnowMesh.xBounds[0]
+            y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
+            z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
+        elif axis == 4: ## If y Axis
+            x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
+            y1,y2=SnowMesh.yBounds[1],SnowMesh.yBounds[0]
+            z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
+        else: ## If z Axis
+            x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
+            y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
+            z1,z2=SnowMesh.zBounds[1],SnowMesh.zBounds[0]
 
         p11=[x1,y1,z1]
         p22=[x2,y2,z2]
@@ -504,7 +526,9 @@ def ReadMesh(VTKfile,VoxelResolution,verbose=False):
 
     return Mesh,sampleVolumeOut,Density,SSA,GrainDiam
 
-def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMesh,nIce,kIce,VoxelRes_mm,verbose=False,Absorb=False):
+def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMesh,nIce,kIce,
+                               VoxelRes_mm,verbose=False,Absorb=False,
+                               Advanced = True,TrackThresh=0.1,TrackDepthMax=4):
 
     """ Function that computes scattering phase function from individual snow grains within the medium
         Follows method described in Letcher et al. 2021 (in prep).  Photons are fired at a particle with random directions
@@ -530,11 +554,9 @@ def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMe
             dtheta (float) - bin size (radians)
     """
 
-    thetas=np.linspace(0,np.pi,PhaseBins)
-    dtheta=np.abs(thetas[1]-thetas[0])
-    thetaCenters=(thetas[:-1]+thetas[1:])/2.
-    bins=np.cos(thetas)
-    dthetac=np.abs(bins[1:]-bins[:-1])
+    bins=np.linspace(0,np.pi,PhaseBins)
+    dtheta=np.abs(bins[1]-bins[0])
+    bins=np.cos(bins)
     binCenters=(bins[:-1]+bins[1:])/2.
     POWER=np.zeros_like(binCenters)
 
@@ -556,40 +578,58 @@ def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMe
         obbTree=CRRELPD.GetObbTree()
 
         for ii in range(nPhotons):
-            x1=np.random.uniform(CRRELPD.xBounds[0],CRRELPD.xBounds[1])
-            y1=np.random.uniform(CRRELPD.yBounds[0],CRRELPD.yBounds[1])
-            z1=np.random.uniform(CRRELPD.zBounds[0],CRRELPD.zBounds[1])
+            axis=np.random.randint(0,6) ## Choose random axis (x,y,z)
+            if axis == 0: ## If x Axis
+                x1,x2=SnowMesh.xBounds[0],SnowMesh.xBounds[1]
+                y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
+                z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
+            elif axis == 1: ## If y Axis
+                x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
+                y1,y2=SnowMesh.yBounds[0],SnowMesh.yBounds[1]
+                z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
+            elif axis == 2: ## If z Axis
+                x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
+                y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
+                z1,z2=SnowMesh.zBounds[0],SnowMesh.zBounds[1]
 
-            x2=np.random.uniform(CRRELPD.xBounds[0],CRRELPD.xBounds[1])
-            y2=np.random.uniform(CRRELPD.yBounds[0],CRRELPD.yBounds[1])
-            z2=np.random.uniform(CRRELPD.zBounds[0],CRRELPD.zBounds[1])
+            elif axis == 3: ## If x Axis
+                x1,x2=SnowMesh.xBounds[1],SnowMesh.xBounds[0]
+                y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
+                z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
+            elif axis == 4: ## If y Axis
+                x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
+                y1,y2=SnowMesh.yBounds[1],SnowMesh.yBounds[0]
+                z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
+            else: ## If z Axis
+                x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
+                y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
+                z1,z2=SnowMesh.zBounds[1],SnowMesh.zBounds[0]
 
             p11=[x1,y1,z1]
             p22=[x2,y2,z2]
 
-            weights,COSPHIS,intersections,dummy=RTcode.ParticlePhaseFunction(CRRELPD,p11,p22,normalsMesh,obbTree,nIce,kIce,absorb=Absorb)
+            if Advanced == True:
+                weights,COSPHIS,intersections,dummy=RTcode.ParticlePhaseFunction(CRRELPD,p11,p22,normalsMesh,obbTree,nIce,kIce,absorb=Absorb)
+            else:
+                weights,COSPHIS,intersections,dummy=RTcode.AdvParticlePhaseFunction(CRRELPD,p11,p22,normalsMesh,obbTree,nIce,kIce,absorb=Absorb,
+                                                                                 TrackThresh=TrackThresh,Tdepth=TrackDepthMax)
 
             if dummy == True or len(COSPHIS) ==0:
                 continue
 
             for cdx,c in enumerate(COSPHIS):
-                # index=np.argmin(np.abs(binCenters-c))
-                index = np.where((c>bins[1:]) & (c<bins[:-1]))[0]
+                index=np.argmin(np.abs(binCenters-c))
                 POWER[index]+=weights[cdx]
 
         if verbose == True:
             timeNow=datetime.now()
             print("Total percent complete =%.1f | Time Elapsed: %.1f seconds"%(100.*(1.+sdx)/GrainSamples,(timeNow-time1).total_seconds()))
 
-    # thetas=np.arccos(binCenters)
-    # POWER=4.*np.pi*POWER[:]/(GrainSamples*nPhotons*np.sin(thetas[:])*dtheta)
-    N = np.sum(POWER)
-    dOmega = np.sin(thetaCenters)*dtheta*2*np.pi
-    pf=4.*np.pi*POWER[:]/(N*dOmega)
+    thetas=np.arccos(binCenters)
+    N = np.sum(POWER[:])
+    dOmega = np.sin(thetas[:])*dtheta*2*np.pi
+    POWER=4.*np.pi*POWER[:]/(N*dOmega)
+
     PhaseText='Phase function computed using "particle-oriented" approach with %s grain samples and %s photons per grain \nAbsorption included in phase function = %s \n'%(GrainSamples,nPhotons,Absorb)
 
-    # calculate asymmetry parameter
-    asymmparam = 0.5*dtheta*np.sum(np.cos(thetaCenters)*np.sin(thetaCenters)*pf)
-    # asymmparam = 0.5*np.sum(binCenters*pf*dthetac)
-    print('asymmparam: ', asymmparam)
-    return pf,thetaCenters,asymmparam,PhaseText,dtheta
+    return POWER,thetas,PhaseText,dtheta

@@ -5,7 +5,6 @@ class _CRRELPolyData:
 
        Note that this class is unique to the CRREL RTM, and is used throughout the larger models in place of
        standard vtk PolyData.
-       
     """
     def __init__(self,mesh,xBounds,yBounds,zBounds,resolution,density,units='mm',description='unknown'):
         import vtk
@@ -105,7 +104,7 @@ class _CRRELPolyData:
         from pandas import read_csv
 
         files=glob.glob(os.path.join(filePath,'*.csv'))
-        allowed=[os.path.split(f)[1].split('_')[0] for f in files]
+        allowed=[f.split('/')[-1].split('_')[0] for f in files]
         if material.lower() not in allowed:
             print('%s is not allowe, defaulting to %s '%(material.lower(),allowed[0]))
             print("Allowed Materials:")

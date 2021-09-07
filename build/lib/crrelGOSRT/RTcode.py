@@ -1,4 +1,3 @@
-from file_pathnames import *
 import vtk
 import numpy as np
 import sys
