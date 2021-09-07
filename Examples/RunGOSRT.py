@@ -38,13 +38,13 @@ fullMeshName='CRREL_MESH.vtk' ## Name of FULL Mesh .VTK file. (i.e., mesh create
 
 
 # Read MicroCT data
-SNOW, X, Y, Z, origin_mm = ImageSeg.ImagesToArray(MCT_PATH,VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,savePropsToCsv=True,saveMeshParams=True)
+SNOW, grid = ImageSeg.ImagesToArray(MCT_PATH,VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes)
 
 # Perform grain segmentation
-grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,VTK_DATA_OUTPATH,thresh=0.9,saveMeshParams=True)
+grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,VTK_DATA_OUTPATH)
 
 # Generate mesh
-ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,X,Y,Z,origin_mm,allowedBorder,minpoints,decimate,VTK_DATA_OUTPATH,fullMeshName,saveMeshParams=True,savePropsToCsv=True,check=False,create_individual=True)
+ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,minpoints,decimate,VTK_DATA_OUTPATH,fullMeshName,check=False)
 
 #%% Run photon-tracking model to get sample optical properties
 
