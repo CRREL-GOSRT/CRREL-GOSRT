@@ -1,0 +1,4 @@
+vtk>=9.0.0
+pyvista>=0.29.0
+pymeshfix>=0.14.0
+pandas>=1.0

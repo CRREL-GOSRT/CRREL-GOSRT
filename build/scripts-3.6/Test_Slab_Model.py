@@ -1,20 +1,16 @@
 ## Continuous Medium Photon-Tracking Model ##
 import sys
-sys.path.append("/Users/rdcrltwl/Desktop/CRRELRTM/CRREL-GOSRT")
 import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd
 import glob as glob
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
-from main import SlabModel, RTcode
+from crrelGOSRT import SlabModel, Utilities
 from scipy import stats
 from scipy.optimize import curve_fit
 from matplotlib import cm
 
-
-def CurveFit(z,mu):
-    return np.exp(-mu*z)
 
 def albedoPlot(wavl,data,Ko=9./7.,b=4.29,d0=0.15):
     wv=data.wave.values*1E-6
@@ -49,33 +45,27 @@ def addAlbedo(ax,diams=[0.15],labels=True):
         plt.xlim(0.3,2)
 
 Slab=SlabModel.SlabModel()
-
+Slab.Initialize()
 Azi,Zenith=Slab.GetZenith()
 
-print(Azi,Zenith)
-sys.exit()
 
-depths=[500,100,60,30,20]
 
 WaveLength=np.arange(400,1300,50)
 
 nPhotons=1500
 
-Edown=RTcode.PlankFunction(WaveLength/1000.)
-cols=Slab.WaveLengthToColor(WaveLength, gamma=0.8)
+Edown=Utilities.PlankFunction(WaveLength/1000.)
+cols=Utilities.WaveLengthToColor(WaveLength, gamma=0.8)
 
 plt.figure(figsize=(10,10))
 ax=plt.subplot(111)
 
-    for dep in depths:
-        Slab.namelistDict['LayerTops']=[dep,0]
-        Slab.Initialize()
-        Albedo, Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=nPhotons)
+Albedo, Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=nPhotons)
 
-        Slab.WriteSpectralToFile('/Users/rdcrltwl/Desktop/MammothMountain_0504/single_%scm.txt'%dep,
-            nPhotons,Zenith,Azi,WaveLength,Albedo,Absorption,Transmiss,filename='$s_cm Single Layer Large'%dep)
+#Slab.WriteSpectralToFile('/Users/rdcrltwl/Desktop/MammothMountain_0504/single_%scm.txt'%dep,
+#    nPhotons,Zenith,Azi,WaveLength,Albedo,Absorption,Transmiss,filename='$s_cm Single Layer Large'%dep)
 
-        plt.plot(WaveLength,Albedo,lw='2',label="Test Spectral Albedo %s"%dep)
+plt.plot(WaveLength,Albedo,lw='2',label="Test Spectral Albedo")
 
 addAlbedo(ax,[0.3],labels=False)
 
