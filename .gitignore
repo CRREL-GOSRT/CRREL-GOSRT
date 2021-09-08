@@ -9,9 +9,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-CRREL_GSORT.egg-info/
-build/
-dist/
+
+#CRREL_GSORT.egg-info/
+#build/
+#dist/
 
 # Spyder project settings
 .spyderproject
