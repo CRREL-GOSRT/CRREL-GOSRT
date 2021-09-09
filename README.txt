@@ -2,7 +2,7 @@
 CRREL-GOSRT
 ===========
 
-The Cold Regions Reserach and Engineering Lab Geometric Optics Snow Radiative Transfer model (CRREL-GOSRT)
+The Cold Regions Research and Engineering Lab Geometric Optics Snow Radiative Transfer model (CRREL-GOSRT)
 is a unique snow radiative transfer model that combines 3D microCT snow renderings with ray-tracing and a generalized photon-tracking model to simulate snow
 optical properties and snow albedo, transmissivity, and absorption at wavelengths between 350 - 1350nm (visible and NIR). Typical usage
 often looks like this::
@@ -34,7 +34,9 @@ Publications
 albedo and transmissivity using X-ray microtomography and
 geometric optics, The Cryosphere
 
-* Parno et al., 2021: AGU Presentation, AGU Fall Meeting, 2021
+* Parno et al., 2021: A Blended Approach Toward Simulating Spectral Snow Reflectivity and
+                      Transmissivity Using Monte Carlo Photon-Tracking and
+                      X-ray Microtomography Surface Rendering, AGU Fall Meeting, 2021
 
 Model Components
 -------------
