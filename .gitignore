@@ -17,6 +17,3 @@ venv.bak/
 *.pyc
 
 .DS_Store
-
-# Data
-/bin/SampleData
