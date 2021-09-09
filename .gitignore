@@ -1,5 +1,6 @@
 # CRREL-GOSRT Specific
 file_pathnames.py
+crrelRTM.yml
 
 # Environments
 .env
@@ -14,5 +15,8 @@ venv.bak/
 .spyderproject
 .spyproject
 *.pyc
+
 .DS_Store
-crrelRTM.yml
+
+# Data
+/bin/SampleData
