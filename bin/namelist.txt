@@ -2,9 +2,9 @@
 
 ### File Paths and Names ###
 
-MasterPath = /Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Facets/NEW/
+MasterPath = /Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Facets/Facets_Props/
 MaterialPath = /Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/
-PropFileNames = 15_14/OpticalProp.txt,
+PropFileNames = OpticalProp14_13.txt,
 
 ## Snowpack Size and Layer Characteristics
 LayerTops = 500,0
