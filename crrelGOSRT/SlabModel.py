@@ -11,8 +11,21 @@ from matplotlib import pyplot as plt
 class SlabModel:
     """SlabModel is the main class for the CRREL Photon Tracking Snow Geometric Optics RTM.
 
-        Version 0.2 --> Replaced version 0.1 January 2021
-            Key Changes:
+        Version 0.2.1 --> Replaced version 0.2.1 September 2021
+
+            Key 0.2.0 -> 0.2.1 Changes:
+                - Updated the namelist dictionary to remove references to LayerPaths to cut down on superfluous folder paths, replaced layer paths with file names
+                    e.g., instead of layerPath1/Properties.txt, layerPath2/Properties.txt
+                          we have MasterPath/Properties1.txt, MasterPath/Properties2.txt
+                - PropFileNames replaced PropFileName in the namelist dictionary and is counted as a list (see above bullet)
+                - Updated string concatentation for paths with os.path.join() for more robust path setting
+                - Moved WaveLengthToColor function into new "Utilities" code.
+                - Finally added the PrintSlabProps() function to the model
+                - Added clearSurface() function to clear any surface data
+                - Added self.__initialized flag to the model class to indicate whether or not the model has been initialized and add some added checks in other code
+                - Other general code cleaning / comments.
+
+            Key  0.1.0 -> 0.2.0 Changes:
                 - Replaced standard model integration with optimized (vectorized) structure
                 - Replaced the standard medium absorption coefficient with "ice-fraction"
                     to explicity calculate energy absorption during integration
@@ -71,7 +84,8 @@ class SlabModel:
             to a .txt file with model parametersfrom the namelist dictionary along with other function inputs.
         6. loadSurface() --> Function that adds a lower boundary to the model object that will determine
             how radiation reaching the model bottom is reflected/absorbed
-        7. PrintSlabProps() --> Prints out current slab information from the properties file!
+        7. clearSurface() --> Clears surface data and removes lower boundary.
+        8. PrintSlabProps() --> Prints out current slab information from the properties file!
 
         Most other functions are private, called as part of the model routines and should not be accessed by the user.
 
@@ -86,11 +100,10 @@ class SlabModel:
         ## read namelist function here, but it doesn't exist yet. ##
 
         self.namelistDict={'MasterPath':'/Users/rdcrltwl/Desktop/SnowOpticsProject/MicroCTData/micro-CT/VTK/',
-                           'LayerPaths':['1s17_94-92cm_20um_Rec/'],
                            'LayerTops':[150],
                            'DepthUnits':'mm',
                            'WaveUnits':'nm',
-                           'PropFileName':'Properties.txt',
+                           'PropFileNames':['Properties.txt'],
                            'Fsoot':[0.0],
                            'Contaminate':'diesel',
                            'PhaseFunc':2,
@@ -109,9 +122,9 @@ class SlabModel:
                            'DiffuseFraction':0
                            }
 
-
         cwd=os.getcwd()
-        self.namelistPath='%s/%s'%(cwd,namelist)
+        self.__initialized =False
+        self.namelistPath=os.path.join(cwd,namelist)
         if os.path.isfile(self.namelistPath) and os.access(self.namelistPath, os.R_OK):
             print("Initializing Namelist Dictionary (self.namelistDict) from %s"%self.namelistPath)
             print("Namelist File Exists...")
@@ -135,6 +148,7 @@ class SlabModel:
         print("!!!! -------------------- !!!!")
         print("")
         print("!!!! -------------------- !!!!")
+        return
 
     def Initialize(self):
 
@@ -189,7 +203,7 @@ class SlabModel:
         self.NumLayers=len(self.namelistDict['LayerTops'])-1 ## Number of layers.
 
         ## need to check and make sure the length of the layerpaths is correct.
-        if len(self.namelistDict['LayerPaths']) != self.NumLayers:
+        if len(self.namelistDict['PropFileNames']) != self.NumLayers:
             self.FatalError("The number of Layer Paths is not equal to the number of layers!")
 
         ## Check to make sure that PhaseFunc is either 1/2 to set how the phase function / photon scattering
@@ -204,13 +218,12 @@ class SlabModel:
             if len(self.namelistDict['Asymmetry']) != self.NumLayers:
                 self.FatalError("The number of Asymmetry parameters is not equal to the number of layers!")
 
-        ## Now need to find the property files in the correct layer folders!
-        PropFiles=[glob.glob('%s/%s/%s'%(self.namelistDict['MasterPath'],i,
-                self.namelistDict['PropFileName']))[0] for i in self.namelistDict['LayerPaths']]
+        ## Now need to find the property files in the master folder!
+        self.__PropFiles=[glob.glob(os.path.join(self.namelistDict['MasterPath'],i))[0] for i in self.namelistDict['PropFileNames']]
 
         ## now that everything is set, fix units of depth to be millimeters!
         ## this matches the assumed units of the extintion and absorption coefficients
-        self.layerTops=np.array(self.namelistDict['LayerTops'])*AllowedUnits[self.namelistDict['DepthUnits']]
+        self.__layerTops=np.array(self.namelistDict['LayerTops'])*AllowedUnits[self.namelistDict['DepthUnits']]
         self.__layerIds=[i for i in range(self.NumLayers)]
 
         ## now set the data for the exitinction/absorption coefficients ##
@@ -229,8 +242,8 @@ class SlabModel:
 
         self.__SootDict={}
         headerLines=[]
-        for idx, i in enumerate(self.namelistDict['LayerPaths']):
-            txtdata = open(PropFiles[idx], 'r')
+        for idx, i in enumerate(self.namelistDict['PropFileNames']):
+            txtdata = open(self.__PropFiles[idx], 'r')
             Lines = txtdata.readlines()
 
             for cdx, c in enumerate(Lines):
@@ -261,8 +274,8 @@ class SlabModel:
             self.__CosIs={}
             self.__PhaseAsym={}
 
-            for idx, i in enumerate(self.namelistDict['LayerPaths']):
-                data=pd.read_csv(PropFiles[idx],header=headerLines[idx])
+            for idx, i in enumerate(self.namelistDict['PropFileNames']):
+                data=pd.read_csv(self.__PropFiles[idx],header=headerLines[idx])
                 self.__ThetaDict[self.__layerIds[idx]] = data['Theta (radians)'].values
                 self.__PhaseDict[self.__layerIds[idx]] = data[' Phase Function'].values
 
@@ -271,7 +284,7 @@ class SlabModel:
                 thetas=np.arccos(bins)
                 dtheta=np.abs(thetas[1]-thetas[0])
 
-                probs=(self.__PhaseDict[self.__layerIds[idx]]*np.sin(self.__ThetaDict[self.__layerIds[idx]])*dtheta)/(4.*np.pi)
+                probs=(self.__PhaseDict[self.__layerIds[idx]]*2*np.pi*np.sin(self.__ThetaDict[self.__layerIds[idx]])*dtheta)/(4.*np.pi)
 
 
                 self.nSamples=int(self.namelistDict['PhaseSamples'])
@@ -291,7 +304,7 @@ class SlabModel:
 
         self.xSize=float(self.namelistDict['xSize'])
         self.ySize=float(self.namelistDict['ySize'])
-        self.__slabDepth=np.max(self.layerTops)
+        self.__slabDepth=np.max(self.__layerTops)
         self.__Surface = False
 
         ## in nm, model will not allow for, and will remove any wavelengths outside of this boundary
@@ -315,8 +328,10 @@ class SlabModel:
         self.__longitude=self.namelistDict['Longitude']
         self.__elevation=self.namelistDict['Elevation']
         self.__time=self.namelistDict['Time']
+        self.__initialized = True
 
         print("Finished initializing Model parameters")
+        return
 
     def __RussianRoulette(self,Photons):
         """
@@ -413,7 +428,7 @@ class SlabModel:
 
         ## Old check to make sure we aren't somehow getting a greater than 1 factor.
         if len(fact) > 1:
-            self.Waring("Upper Move max factor = %.1f"%np.max(fact))
+            self.Warning("Upper Move max factor = %.1f"%np.max(fact))
 
         ## interpolate Fice and Fsoot to weighted averaged between layers.
         Fice[UpperMovIdx]=(np.array([IceDict[i] for i in layerIds[UpperMovIdx]])*fact
@@ -484,9 +499,64 @@ class SlabModel:
 
 
     def PrintSlabProps(self):
-        """This function prints out to the terminal screen, the slab physical and optical properties from each snow layer!"""
+        """This function prints out to the terminal screen, the slab physical and optical properties from each snow layer"""
 
-        ### WORK ON THIS TODAY -- >TED
+        print("-------------------------------------------------------------------------")
+        print("-----------          Printing Out Slab Properties            ------------")
+        print("-------------------------------------------------------------------------")
+
+        print("Initialized? %s"%str(self.__initialized))
+        print("")
+        print("Filepaths:")
+        print(" Namelist file path: %s"%self.namelistPath)
+        print(" Material Path: %s"%self.namelistDict['MaterialPath'])
+        print(" Properties Filepath: %s"%self.namelistDict['MasterPath'])
+        print("")
+
+        print("Namelist Options:")
+        for i in self.namelistDict.keys():
+            if i not in ['MaterialPath','MasterPath']:
+                print(" %s: %s"%(i,str(self.namelistDict[i])))
+
+        print("")
+
+        if self.__initialized == True:
+            print("Curremnt Model Configuration")
+            print("** Note, if this does not match the namelist, then reinialize the model prior to running **")
+
+            print("Total Snow Depth: %s (%s)"%(self.__slabDepth,self.namelistDict['DepthUnits']))
+            print("Snow Layer Tops (%s)"%self.namelistDict['DepthUnits'])
+            for i in range(len(self.__layerIds)):
+                print("  Id = %s | z = %s"%(self.__layerIds[i],self.__layerTops[i]))
+
+            print("Optical Property Files")
+            for i in range(len(self.__layerIds)):
+                print("  Id = %s | File = %s"%(self.__layerIds[i],self.__PropFiles[i]))
+
+
+            print("Extinction Coefficient/Fice/Fsoot")
+            for i in self.__layerIds:
+                print("  Id = %s | ext = %s | Fice = %s | Fsoot = %s"%(i,self.__ExtCoeffDict[i],self.__FiceDict[i],self.__SootDict[i]))
+
+            print("Diffuse Fraction %s"%self.__DiffuseFraction)
+            print("*Only used in the 'GetZenith' function for approximating Zenith and Azimuth angle.")
+            print("*Latitude = %s"%self.__latitude)
+            print("*Longitude = %s"%self.__longitude)
+            print("*Elevation = %s"%self.__elevation)
+            print("*Time (UTC) =%s"%self.__time)
+
+            print("Surface? %s"%str(self.__Surface))
+            print("")
+
+            if self.__Surface == True:
+                print("Surface Properties")
+                print(" BRDF: %s"%self.__SfcBRDF)
+                for i in self.BRDFParams.keys():
+                    print("%s: %s"%(i,self.BRDFParams[i]))
+
+
+        return
+
 
     def RunBRDF(self,WaveLength,Zenith,Azimuth,nPhotons=10000,binSize=10,angleUnits='Degrees'):
 
@@ -509,6 +579,11 @@ class SlabModel:
                 absorbed = overall absorbed fraction
                 transmiss = overall transmitted fraction
         """
+
+        if self.__initialized == False:
+            print("The Model has not been initalized.  You must initialize this model before running 'RunBRDF'. Exiting.")
+            print(" --> mod.Initialize()")
+            sys.exit()
 
         AllowedAngleUnits=['deg','rad','degrees','radians']
         if angleUnits.lower() not in AllowedAngleUnits:
@@ -564,7 +639,7 @@ class SlabModel:
             g=self.NumLayers*[0.9]
 
         ## Current bin defines the lower and upper boundaries of the bin!
-        currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
+        currentBin=np.array([[self.__layerTops[i],self.__layerTops[i+1]] for i in layerIds]).T
 
         Photons=np.ones([nPhotons],dtype=np.double)
         u0=np.array([xx,yy,zz])
@@ -705,7 +780,7 @@ class SlabModel:
             layerIds=layerIds[keepIdx]
             s=s[0,keepIdx]
             ## Reset the current layer boundaries to match the current layer ids!
-            currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
+            currentBin=np.array([[self.__layerTops[i],self.__layerTops[i+1]] for i in layerIds]).T
             ## Reset coefficients to current ids!
             extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
             Fice = np.array([self.__FiceDict[i] for i in layerIds])
@@ -783,6 +858,12 @@ class SlabModel:
                 transmiss = overall transmitted fraction
                 transmissionPower = Transmission power for each depth in "transmission"
         """
+
+
+        if self.__initialized == False:
+            print("The Model has not been initalized.  You must initialize this model before running 'GetSpectralAlbedo'. Exiting.")
+            print(" --> mod.Initialize()")
+            sys.exit()
 
         WaveLength=np.array(WaveLength)
 
@@ -865,7 +946,7 @@ class SlabModel:
                 g=self.NumLayers*[0.9]
 
             ## Current bin defines the lower and upper boundaries of the bin!
-            currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
+            currentBin=np.array([[self.__layerTops[i],self.__layerTops[i+1]] for i in layerIds]).T
 
             Photons=np.ones([nPhotons],dtype=np.double)
             u0=np.array([xx,yy,zz])
@@ -980,7 +1061,7 @@ class SlabModel:
                             transmissionDict[wavelen][i]=transmissionDict[wavelen][i]+[j for j in PhotonId[transmitted] if j not in transmissionDict[wavelen][i]]
 
                 ## Reset the current layer boundaries to match the current layer ids!
-                currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
+                currentBin=np.array([[self.__layerTops[i],self.__layerTops[i+1]] for i in layerIds]).T
                 ## Reset coefficients to current ids!
                 extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
                 Fice = np.array([self.__FiceDict[i] for i in layerIds])
@@ -1058,6 +1139,11 @@ class SlabModel:
                 PowerOut = Photon energy within the medium (list containting smaller lists)
         """
 
+        if self.__initialized == False:
+            print("The Model has not been initalized.  You must initialize this model before running 'PhotonTrace'. Exiting.")
+            print(" --> mod.Initialize()")
+            sys.exit()
+
         WaveLength=np.array(WaveLength)
 
         ## Make sure WaveLength is in the limits
@@ -1120,7 +1206,7 @@ class SlabModel:
             g=self.NumLayers*[0.9]
 
         ## Current bin defines the lower and upper boundaries of the bin!
-        currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
+        currentBin=np.array([[self.__layerTops[i],self.__layerTops[i+1]] for i in layerIds]).T
 
         Photons=np.ones([nPhotons],dtype=np.double)
         u0=np.array([xx,yy,zz])
@@ -1216,7 +1302,7 @@ class SlabModel:
             extCoeff=extCoeff[keepIdx]
 
             ## Reset the current layer boundaries to match the current layer ids!
-            currentBin=np.array([[self.layerTops[i],self.layerTops[i+1]] for i in layerIds]).T
+            currentBin=np.array([[self.__layerTops[i],self.__layerTops[i+1]] for i in layerIds]).T
             ## Reset coefficients to current ids!
             extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
             Fice = np.array([self.__FiceDict[i] for i in layerIds])
@@ -1309,9 +1395,52 @@ class SlabModel:
         return CosIs
 
 
+    def clearSurface(self):
+        """Simple function that is used to clear the lower boundary:
+
+           Example usage:
+                mod.clearSurface()
+
+        """
+
+        self.__Surface=False
+        self.__SfcBRDF=None
+        self.BRDFParams=None
+        self.__BRDFTheta=None
+        self.__BRDFPhi=None
+        self.__BRDFdTheta=None
+        self.__sfcFile=None
+
+        print("Lower boundary and all associated data have been cleared.  RTM will no longer run with a lower boundary.")
+        return
+
     def loadSurface(self,BRDF,binsize=4.,fromFile=False,sfcFile='/Users/rdcrltwl/Desktop/NewRTM/Surfaces/BlackPlate.csv'):
 
-        """THIS FUNCTION IS NOT COMPLETE YET, DON"T USE!"""
+        """
+            User accessible function to load a lower boundary into the model.
+            The lower boundary sets a surface reflectance value that can reflect a wavelength dependent (or independent)
+            portion of rays that reach the bottom of the snowpack upward back into the snowpack.
+            Surface boundarys can be lambertian (random reflected direction) or Specular (Mirror reflected) or be given a specific BRDF.
+            Note that while the BRDF specification appears to work okay, it is extraordinarily slow due to having to compute a probabilistic
+            reflected direction for all incident angles.
+            Further, only the lambertian boundary has been rigorously tested, so use other options at your own risk.
+            **Note that only lambert and specular boundaries include a surface file.
+
+            Inputs:
+                BRDF = Type of reflectance function --> Must be one of: 'lambert','specular','hapke','rpv'
+                binSize (optional) = BRDF bin size (degrees), only used for 'hapke' and 'rpv' options.
+                fromFile (optional) = Boolean flag to determine if the reflected portion is wavelength dependent or not.
+                    if this value is False, the albedo will be wavelength indepenent and set within the BRDFParams dictionary as "albedo"
+                sfcFile (optional) = Fulle File path to a .csv file that has the wavelength dependent reflectance values
+
+            Returns:
+                Sets the self.__Surface value = True, and sets self.BRDFParams dictionary.
+        """
+
+        if self.__initialized == False:
+            print("The Model has not been initalized.  You must initialize this model before running 'loadSurface'. Exiting.")
+            print(" --> mod.Initialize()")
+            sys.exit()
 
         if BRDF.lower() not in ['hapke','rpv','lambert','specular']:
             Warning("The BRDF %s is not allowed!"%BRDF)
@@ -1331,7 +1460,8 @@ class SlabModel:
             self.BRDFParams={'albedo':0.32,'fromFile':fromFile}
 
             if fromFile == True:
-                self.SFCFileData=pd.read_csv(sfcFile)
+                self.__sfcFile=sfcFile
+                self.SFCFileData=pd.read_csv(self.__sfcFile)
 
         if BRDF.lower() == 'rpv':
             print("Surface parameters can be accessed inline with the BRDFParams dictionary")
@@ -1356,55 +1486,9 @@ class SlabModel:
         theta,phi,Theta=None,None,None
 
         print("Surface has been set.  CRREL RTM will now run with a lower boundary")
+        print("To access the BRDF parameters, use the BRDFParams dictionary.")
         print("-----------------------------------")
-
-
-    def WaveLengthToColor(self,WaveLength, gamma=0.8):
-        '''This converts a given wavelength of light to an
-        approximate RGB color value. The wavelength must be given
-        in nanometers in the range from 380 nm through 750 nm
-        (789 THz through 400 THz).
-
-        Based on code by Dan Bruton
-        http://www.physics.sfasu.edu/astro/color/spectra.html
-        '''
-        cols=[]
-
-        for i in WaveLength:
-            wavelength = float(i)
-            if wavelength >= 380 and wavelength <= 440:
-                attenuation = 0.3 + 0.7 * (wavelength - 380) / (440 - 380)
-                R = ((-(wavelength - 440) / (440 - 380)) * attenuation) ** gamma
-                G = 0.0
-                B = (1.0 * attenuation) ** gamma
-            elif wavelength >= 440 and wavelength <= 490:
-                R = 0.0
-                G = ((wavelength - 440) / (490 - 440)) ** gamma
-                B = 1.0
-            elif wavelength >= 490 and wavelength <= 510:
-                R = 0.0
-                G = 1.0
-                B = (-(wavelength - 510) / (510 - 490)) ** gamma
-            elif wavelength >= 510 and wavelength <= 580:
-                R = ((wavelength - 510) / (580 - 510)) ** gamma
-                G = 1.0
-                B = 0.0
-            elif wavelength >= 580 and wavelength <= 645:
-                R = 1.0
-                G = (-(wavelength - 645) / (645 - 580)) ** gamma
-                B = 0.0
-            elif wavelength >= 645 and wavelength <= 750:
-                attenuation = 0.3 + 0.7 * (750 - wavelength) / (750 - 645)
-                R = (1.0 * attenuation) ** gamma
-                G = 0.0
-                B = 0.0
-            else:
-                R = 0.6
-                G = 0.6
-                B = 0.6
-
-            cols.append((R,G,B))
-        return cols
+        return
 
 
     def AssignMaterial(self,material,filePath):
@@ -1412,9 +1496,9 @@ class SlabModel:
         from pandas import read_csv
 
         files=glob.glob('%s/*.csv'%filePath)
-        allowed=[f.split('/')[-1].split('_')[0] for f in files]
+        allowed=[os.path.basename(f) for f in files]
         if material.lower() not in allowed:
-            print('%s is not allowe, defaulting to %s '%(material.lower(),allowed[0]))
+            print('%s is not allowed, defaulting to %s '%(material.lower(),allowed[0]))
             print("Allowed Materials:")
             for i in allowed:
                 print(" -- %s"%i)
@@ -1422,19 +1506,21 @@ class SlabModel:
 
 
         RIfile=glob.glob('%s/*%s*.csv'%(filePath,material.lower()))[0]
-        self.RIFile=RIfile
+        self.__RIFile=RIfile
 
         ##open Refractive index file
         RIdata=read_csv(RIfile)
-        self._RefracData=read_csv(RIfile)
+        self.__RefracData=read_csv(RIfile)
         ## convert from um to meters
-        self._RefracData.wave=self._RefracData.wave*1E-6
-        self.Material=material
+        self.__RefracData.wave=self.__RefracData.wave*1E-6
+        self.__Material=material
+
+        return
 
     def GetRefractiveIndex(self,wavelength,units='nm'):
         import numpy as np
         import re
-        if isinstance(self._RefracData,type(None)):
+        if isinstance(self.__RefracData,type(None)):
             print("This Object class does not have an assinged material")
             print("Please assign a material using the 'AssignMaterial' function before trying to get refractive indicies")
         allowedUnits={'m':1,'cm':100,'mm':1000,'um':1e6,'nm':1e9}
@@ -1457,8 +1543,8 @@ class SlabModel:
             wavelength=wavelength/allowedUnits[units]
 
         ## Use log interpolation for refractive index and refractive indices
-        k=np.exp(np.interp(np.log(wavelength),np.log(self._RefracData.wave.values),np.log(self._RefracData.Im.values)))
-        RI=np.interp(np.log(wavelength),np.log(self._RefracData.wave.values),self._RefracData.Re.values)
+        k=np.exp(np.interp(np.log(wavelength),np.log(self.__RefracData.wave.values),np.log(self.__RefracData.Im.values)))
+        RI=np.interp(np.log(wavelength),np.log(self.__RefracData.wave.values),self.__RefracData.Re.values)
         abso=(4.*np.pi*k/wavelength)*1e-3 # absorption coefficient
         n=RI ## real part of refractive index
 
@@ -1478,7 +1564,7 @@ class SlabModel:
         NamelistData = open(self.namelistPath, 'r')
         Lines = NamelistData.readlines()
 
-        listKeys=['LayerPaths','LayerTops','Fsoot','Asymmetry']
+        listKeys=['PropFileNames','LayerTops','Fsoot','Asymmetry']
         # Strips the newline character
         for line in Lines:
             line=line.split('#')[0]
@@ -1498,6 +1584,7 @@ class SlabModel:
                         NamelistDict[key] = value
 
         self.namelistDict=NamelistDict
+        return
 
     def GetZenith(self):
         """
@@ -1560,7 +1647,7 @@ class SlabModel:
         ## write header information first! ##
         nowtime=datetime.now().strftime('%c')
 
-        listKeys=['LayerPaths','LayerTops','Fsoot','Asymmetry']
+        listKeys=['PropFileNames','LayerTops','Fsoot','Asymmetry']
 
         outfile.write("Simulated Spectral Output From CRREL Snow RTM\n")
         outfile.write("File Created: %s\n"%nowtime)
@@ -1592,3 +1679,4 @@ class SlabModel:
             outfile.write('%.3f,%.3f,%.3f,%.3f\n'%(WaveLength[i],Albedo[i],Transmission[i],Absorption[i]))
 
         outfile.close()
+        return

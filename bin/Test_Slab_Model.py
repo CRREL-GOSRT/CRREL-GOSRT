@@ -6,14 +6,11 @@ import pandas as pd
 import glob as glob
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
-from crrelGOSRT import SlabModel, RTcode
+from crrelGOSRT import SlabModel, Utilities
 from scipy import stats
 from scipy.optimize import curve_fit
 from matplotlib import cm
 
-
-def CurveFit(z,mu):
-    return np.exp(-mu*z)
 
 def albedoPlot(wavl,data,Ko=9./7.,b=4.29,d0=0.15):
     wv=data.wave.values*1E-6
@@ -51,12 +48,14 @@ Slab=SlabModel.SlabModel()
 Slab.Initialize()
 Azi,Zenith=Slab.GetZenith()
 
+
+
 WaveLength=np.arange(400,1300,50)
 
-nPhotons=1500
+nPhotons=1000
 
-Edown=RTcode.PlankFunction(WaveLength/1000.)
-cols=Slab.WaveLengthToColor(WaveLength, gamma=0.8)
+Edown=Utilities.PlankFunction(WaveLength/1000.)
+cols=Utilities.WaveLengthToColor(WaveLength, gamma=0.8)
 
 plt.figure(figsize=(10,10))
 ax=plt.subplot(111)
@@ -66,7 +65,7 @@ Albedo, Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,
 #Slab.WriteSpectralToFile('/Users/rdcrltwl/Desktop/MammothMountain_0504/single_%scm.txt'%dep,
 #    nPhotons,Zenith,Azi,WaveLength,Albedo,Absorption,Transmiss,filename='$s_cm Single Layer Large'%dep)
 
-plt.plot(WaveLength,Albedo,lw='2',label="Test Spectral Albedo %s"%dep)
+plt.plot(WaveLength,Albedo,lw='2',label="Test Spectral Albedo")
 
 addAlbedo(ax,[0.3],labels=False)
 

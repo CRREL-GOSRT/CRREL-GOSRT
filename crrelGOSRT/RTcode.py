@@ -10,15 +10,6 @@ def HeyNey(PHI,g=0.847):
     P=(1.-g**2.)/((1.+g**2.-2.*g*COSPHI)**(3./2.))
     return P
 
-def PlankFunction(wavelen,T=5778.):
-    """Plank Function
-        Wavelength must be in meters"""
-
-    c1=1.191042E8
-    c2=1.4387752E4
-    L=c1/(wavelen**5*(np.exp(c2/(wavelen*T))-1))
-    return L
-
 def vecMag(v):
     """Computes 3D vector magnitude"""
     # Calculate vector magnitude
