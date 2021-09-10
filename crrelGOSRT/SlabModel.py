@@ -428,7 +428,7 @@ class SlabModel:
 
         ## Old check to make sure we aren't somehow getting a greater than 1 factor.
         if len(fact) > 1:
-            self.Waring("Upper Move max factor = %.1f"%np.max(fact))
+            self.Warning("Upper Move max factor = %.1f"%np.max(fact))
 
         ## interpolate Fice and Fsoot to weighted averaged between layers.
         Fice[UpperMovIdx]=(np.array([IceDict[i] for i in layerIds[UpperMovIdx]])*fact
