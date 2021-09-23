@@ -5,10 +5,10 @@ CRREL Geometric Optics Snow Radiative Transfer (GOSRT) Model.
 
 - [x] Initial Code Packaging with __init__.py and setup.py files
 - [x] Reorganization of subfolders to match standard syntax (e.g., main -> crrelGOSRT and Examples -> bin)
-- [ ] test.py
-- [ ] Usable README.md file
-- [ ] added imageSegJulie.py to "bin" folder
-
+- [x] Usable README.md file
+- [x] added imageSegJulie.py to "bin" folder
+- [ ] Clean code for publication
+- [ ] Add sample data and update paper figures to match.
 
 ## PhotonTrack model usage
 
@@ -42,3 +42,4 @@ Wavelength = range(500,1000,50)
 Albedo, Absorption,Transmiss,transDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,
                                                               Azi,nPhotons=1000)
 ```
+

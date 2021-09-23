@@ -4,7 +4,7 @@ import sys
 
 """Contains stand alone helper functions to facilitate the photon tracking RT code and interaction with rays and 3D mesh elements."""
 
-def HeyNey(PHI,g=0.847):
+def HenYey(PHI,g=0.847):
     """Henyey-Greenstein Phase function approximation"""
     COSPHI=np.cos(PHI)
     P=(1.-g**2.)/((1.+g**2.-2.*g*COSPHI)**(3./2.))
@@ -40,19 +40,23 @@ def unit_vector(vector):
 
 def Fresnel(n1, n2, v_i, v_n,polar=0):
     """
-    This function determines whether the photon is reflected or transmitted
+    This function determines the new reflected/transmitted directions of a ray at a boundary, and their corresponding weights.
 
-    n1 -- incident medium's index of refraction
-    n2 -- transmission medium's index of refraction
-    v_i -- incident ray direction vector
-    v_n -- surface normal direction vector
-    polar -- if polar is a complex number, it will determine the photons polarization from it's imaginary part:
-        1 = Horizontal polarization
-        otherwise = Vertical polarization
+    Inputs:
+        n1 -- incident medium's index of refraction
+        n2 -- transmission medium's index of refraction
+        v_i -- incident ray direction vector
+        v_n -- surface normal direction vector
+        polar -- if polar is a complex number, it will determine the photons polarization from it's imaginary part:
+            1 = Horizontal polarization
+            otherwise = Vertical polarization
 
 
     Returns:
-        reflected and transmitted vectors, as well as reflected / transmitted weights.
+        v_i_ref - (3D vector) reflected vector direction
+        v_i_tran - (3D vector) transmitted vector direction
+        reflectance - (float) fraction of radiation reflected
+        transmitted - (float) fraction of radiation transmitted
 
     """
 
@@ -137,14 +141,18 @@ def isReflected(n1, n2, v_i, v_n,polar=0,TIR=0.0):
     """
     This function determines whether the photon is reflected or transmitted
 
-    n1 -- incident medium's index of refraction
-    n2 -- transmission medium's index of refraction
-    v_i -- incident ray direction vector
-    v_n -- surface normal direction vector
-    count -- counter that keeps track of the number of transmissions and reflections
+    Inputs:
+        n1 - incident medium's index of refraction
+        n2 - transmission medium's index of refraction
+        v_i - incident ray direction vector
+        v_n - surface normal direction vector
+        polar - (optional) allows for reflection/refraction to have polarity
+        TIR - (optional) counts total number of total-internal-reflections, helpful for killing trapped photons
 
-    returns "v_i_new" which is the new incident ray direction that results from
-    a transmission or reflection
+    Returns:
+        v_i_new - (3D vector) the new incident ray direction that results from a transmission or reflection
+        reflected - (bool) flag indicating whether or not the photon was reflected
+        TIR - (int) new total internal reflection count.
     """
 
     # Incident ray directional sines and cosines
@@ -205,7 +213,6 @@ def isReflected(n1, n2, v_i, v_n,polar=0,TIR=0.0):
         else:
             reflectance = (Rs ** 2.+ Rp ** 2.) / 2.
 
-        #print("ref",reflectance,cosi,cosT,Rs,Rp,cosThetai)
         # Reflect photon:
         # ---------------
         ##Do a check and make sure that the reflectance is okay.
@@ -217,48 +224,178 @@ def isReflected(n1, n2, v_i, v_n,polar=0,TIR=0.0):
             # Calculate reflection vector
             v_i_new = v_i + 2 * cosThetai * v_n
             reflected = True
-            #print("Reflect",np.max(np.abs(v_i_new)),reflectance,cosThetat,cosThetai)
-            #print("reflected.")
+
         # Transmit photon:
         # ----------------
         else:
             # Calculate transmission vector
             v_i_new = n1 / n2 * v_i + ( n1 / n2 * cosi - cosT ) * v_n
-            #print("REFRACT ---- ",np.max(np.abs(v_i_new)),reflectance,cosThetat,cosThetai)
             reflected = False
-            #print(n1,n2,np.degrees(np.arccos(cosT)),v_i_new)
-            #print(v_i_new)
-            #print(np.dot(v_i,v_n))
-            #print(v_n)
 
             if np.sqrt(np.sum([i**2. for i in v_i_new])) > 1.0001:
+                ## Sometimes, math just doesn't work.
                 print("Transmission BAD UNIT VECTOR!",v_i_new)
+
     # Total internal reflectance condition:
     # -------------------------------------
     else:
         # Calculate reflection vector
         TIR+=1
         v_i_new = v_i + 2 * cosThetai * v_n
-
-        #print("Reflect",np.max(np.abs(v_i_new)))
         reflected = True
 
         if np.sqrt(np.sum([i**2. for i in v_i_new])) > 1.0001:
+            ## Sometimes, math just doesn't work.
             print("TIR BAD UNIT VECTOR!",v_i_new)
 
     return v_i_new, reflected,TIR
 
 
-
-def castRay(pSource, pTarget, obbTree, normalsMesh, inside):
+def castRayAll(pSource,pTarget,obbTree,normalsMesh):
     """
-    Ray casting section
+    This casts a ray and returns ALL intersections along the line. Used in TracktoAbsStraight function, so
+    generally not called as part of the larger RTM framework.
+
+    Inputs:
+        pSource - (3D vector) initial location of photon
+        pDir - (3D unit vector) intial direction of photon travel
+        obbTree - (vtk object) mesh object that contains information used to find intersections within the ray-tracing
+        normalsMesh - (vtk object) mesh normal vectors -> Passed from CRRELPolyData object
+
+    Returns:
+        distances - (array[numIntersections]) distances between each intersection
+        normals - (array[numIntersections]) normal vectors at each intersection
+        isHit - (bool) True/False flag indicating whether or not an intersection was found
+    """
+
+    # Check for intersection with line
+    pointsIntersection = vtk.vtkPoints()   # Contains intersection point coordinates
+    cellIds = vtk.vtkIdList()              # Contains intersection cell ID
+
+    # Perform intersection test
+    code = obbTree.IntersectWithLine(pSource, pTarget, pointsIntersection, cellIds)
+    numIntersections = pointsIntersection.GetNumberOfPoints()
+
+    distances=[]
+    normals=[]
+    if code == 0:
+        isHit = False
+        # Return empty variables
+        intersectionPt = np.array([])
+        cellIdIntersection = []
+        normalMeshIntersection = []
+    else:
+        isHit = True
+        pointsIntersectionData = pointsIntersection.GetData()
+        v_i = pts2unitVec(pSource, pTarget).squeeze()
+
+        for idx in range(numIntersections):
+
+            if idx == 0:
+                p1=pSource[:]
+            else:
+                p1=intersectionPt[:]
+
+            v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
+            intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
+            cellIdIntersection = cellIds.GetId(idx)
+            normalMeshIntersection = v_n
+
+
+            distances.append(ptsDistance(p1,intersectionPt))
+            normals.append(np.dot(v_i,v_n))
+
+    return np.array(distances),np.array(normals), isHit
+
+def castFirst(pSource,pTarget,obbTree,normalsMesh):
+    """
+    This casts a ray and returns first intersection, used for tracking extinction coefficient.
+
+    Inputs:
+        pSource - (3D vector) initial location of photon
+        pDir - (3D unit vector) intial direction of photon travel
+        obbTree - (vtk object) mesh object that contains information used to find intersections within the ray-tracing
+        normalsMesh - (vtk object) mesh normal vectors -> Passed from CRRELPolyData object
+
+    Returns:
+        intersectionPt - (3D vector) location of intersection
+        cellIdIntersection - (int) id of mesh cell where intersection occurs
+        normalMeshIntersection - (3D vector) normal vector of intersected cell
+        isHit - (bool) True/False flag indicating whether or not an intersection was found
+    """
+
+    ## Lots of care needs to be taken to avoid some funny business that sometimes occurs due to
+    ## interactions between the under-the-hood algorithms that search for intersections and minor
+    ## inaccuracies in the mesh.
+    ## Lots of minor issues with initial intersections when occurring on an inside
+    ## boundary, difficult to sort out for all meshes, and likely has to do with grain segmentation
+    ## Some "hacky" fixes are used here to mitigate these issues.
+
+    # Check for intersection with line
+    pointsIntersection = vtk.vtkPoints()   # Contains intersection point coordinates
+    cellIds = vtk.vtkIdList()              # Contains intersection cell ID
+
+    # Perform intersection test
+    code = obbTree.IntersectWithLine(pSource, pTarget, pointsIntersection, cellIds)
+    # Return empty variables
+    intersectionPt = np.array([])
+    cellIdIntersection = []
+    normalMeshIntersection = []
+    isHit = False
+    v_i=pts2unitVec(pSource,pTarget)
+    if code == 0 or pointsIntersection.GetNumberOfPoints() < 2: # avoids boundaries.
+        isHit = False
+    else:
+        pointsIntersectionData = pointsIntersection.GetData()
+        for idx in np.arange(pointsIntersection.GetNumberOfPoints()):
+            intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
+            if ptsDistance(intersectionPt,pSource) > 0.001:
+                isHit = True
+                v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
+                cellIdIntersection = cellIds.GetId(idx)
+                intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
+                normalMeshIntersection = v_n
+
+                if np.dot(v_i,v_n) > 0 and idx == 0:
+                    continue
+
+                if idx > 3:
+                    ## TOO FAR! ##
+                    isHit = False
+                    break
+                break
+            else:
+                continue
+
+
+    return intersectionPt, cellIdIntersection, normalMeshIntersection, isHit
+
+def castRay(pSource, pTarget, obbTree, normalsMesh, inside,first=False):
+    """
+    This casts a ray from pSource towards pTarget and checks for an intersection with the
+    mesh obbTree.  Normal vector from normalsMesh helps determine if the particle being casted is
+    inside or outside of the ice.
+
+    Inputs:
+        pSource - (3D vector) initial location of photon
+        pTarget - (3D unit vector) Final location of photon assuming straight line
+        obbTree - (vtk object) mesh object that contains information used to find intersections within the ray-tracing
+        normalsMesh - (vtk object) mesh normal vectors -> Passed from CRRELPolyData object
+        inside - (bool) flag to determine if the particle intial location is within or outside of the ice, helps ensure correct intersection is used.
+        first (optional : bool) flag to determine if this is intial point, if so, it does not check for inside.
+
+    Returns:
+        intersectionPt - (3D vector) location of intersection
+        cellIdIntersection - (int) id of mesh cell where intersection occurs
+        normalMeshIntersection - (3D vector) normal vector of intersected cell
+        isHit - (bool) True/False flag indicating whether or not an intersection was found
     """
     # Check for intersection with line
     pointsIntersection = vtk.vtkPoints()   # Contains intersection point coordinates
     cellIds = vtk.vtkIdList()              # Contains intersection cell ID
 
     # Perform intersection test
+
     code = obbTree.IntersectWithLine(pSource, pTarget, pointsIntersection, cellIds)
 
     # Total number of intersection points
@@ -283,10 +420,8 @@ def castRay(pSource, pTarget, obbTree, normalsMesh, inside):
         found = False
         idx = 0
 
-        v_i = np.array(pTarget) - np.array(pSource)
-
-        while not found:
-
+        v_i = pts2unitVec(pSource, pTarget).squeeze()
+        while found == False:
             # Check if there are any intersection points left
             if idx >= numIntersections:
                 isHit = False
@@ -300,24 +435,31 @@ def castRay(pSource, pTarget, obbTree, normalsMesh, inside):
 
             else:
                 v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
-                if np.dot(v_i, v_n) > 0.0:
-
-                    if inside:
-                        intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
-                        cellIdIntersection = cellIds.GetId(idx)
-                        normalMeshIntersection = v_n
-
-                        found = True
-
+                ## Special, check to make sure that the intersection makes sense.
+                ## (i.e., the normal direction vector is pointing the right way according to whether or not you are inside the ice.)
+                if first == True:## first point,don't check!
+                    intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
+                    cellIdIntersection = cellIds.GetId(idx)
+                    normalMeshIntersection = v_n
+                    found = True
+                    break
                 else:
+                    if np.dot(v_i, v_n) > 0.0:
+                        if inside:
+                            intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
+                            cellIdIntersection = cellIds.GetId(idx)
+                            normalMeshIntersection = v_n
+                            found = True
+                            break
+                    else:
+                        if not inside:
+                            v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
+                            intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
+                            cellIdIntersection = cellIds.GetId(idx)
+                            normalMeshIntersection = v_n
 
-                    if not inside:
-                        intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
-                        cellIdIntersection = cellIds.GetId(idx)
-                        normalMeshIntersection = v_n
-
-                        found = True
-
+                            found = True
+                            break
             idx += 1
 
     return intersectionPt, cellIdIntersection, normalMeshIntersection, isHit
@@ -325,7 +467,23 @@ def castRay(pSource, pTarget, obbTree, normalsMesh, inside):
 
 def TracktoExt_multi(CRRELPolyData,pSource,vectors):
     """ DEVELOPMENTAL FUNCTION FOR VECTORIZED RAY-CASTING WITH PYVISTA!  STILL IN EARLY DEVELOPMENT
-        I HIGHLY RECOMMEND THAT YOU DO NOT USE THIS!!!"""
+        I HIGHLY RECOMMEND THAT YOU DO NOT USE THIS!!!
+
+        Function attempts to use pyvista to track muliple particles at once in order to run faster.  While this seems to work
+        It does not return the same answer as the serial TracktoExt function, and has some known issues with respect to rays "missing"
+        intersections.  May be useful in the future!
+
+        This also requires some additional dependencies, and manual modification to the pyvista code in site-packages.
+
+        Inputs:
+            CRRELPolyData - (CRREL Poly Data Object) contains required mesh information
+            pSource - (3D vector) initial location of photon
+            pDir - (3D unit vector) intial direction of photon travel
+            raylen - (float: optional) how far to cast ray in search of intersections (mm)
+
+        Returns:
+            Information, not yet provided.
+        """
 
     import pyvista as pv
 
@@ -342,30 +500,36 @@ def TracktoExt_multi(CRRELPolyData,pSource,vectors):
 
     return dists,points,ind_tri,ind_ray,pvmesh
 
-def TracktoExt(CRRELPolyData,pSource,pTarget,raylen=1000):
+def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000):
+    import pyvista as pv
     """
-    THIS IS A TRIMMED DOWN VERSION OF THE TrackPhoton Function that is designed to determine the Total Extinction probability of a Photon
-     OVER A GIVEN DISTANCE!
+    This function sets a particle initial location / direction and looks for the first mesh intersection.
+    Returns np.nan if the particle doesn't find an intersection, or if something else goes wrong.
 
-    # Increment ray path length
-    #                totalPathLength += ptsDistance(prevIntersectionPt, intersectionPt)
+    Inputs:
+        CRRELPolyData - (CRREL Poly Data Object) contains required mesh information
+        pSource - (3D vector) initial location of photon
+        pDir - (3D unit vector) intial direction of photon travel
+        raylen - (float: optional) how far to cast ray in search of intersections (mm)
 
-    # Calculate probability that ray will be absorbed
-    #                Pabs = 1 - exp(-k * totalPathLength)
+    Returns:
+        pathLength - (float) distance traveled until intersection
+        dot - (float) dot product between the incident vector and normal vector at intersection, can help determine whether particle is inside or outside of ice.
+
     """
     assert hasattr(CRRELPolyData, 'isCRRELPolyData') == True,"This is not a CRRELPolyData Object, This function can only take CRRELPolyData Objects."
 
 
     inSnow = True ## yes, we are in the space.
-    ice = False #No we are not in Ice
     normalsMesh=CRRELPolyData.GetNormalsMesh()
     obbTree=CRRELPolyData.GetObbTree()
 
     pSource=np.array(pSource)
-    pTarget=np.array(pTarget)
+    pTarget = pSource + pDir * raylen
 
-    intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
-                                                                            obbTree, normalsMesh,ice)
+    intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castFirst(pSource, pTarget,
+                                                                            obbTree, normalsMesh)
+
     if isHit ==True:
         # Incident ray and surface normal vectors
         v_i = pts2unitVec(pSource, pTarget).squeeze()
@@ -374,63 +538,126 @@ def TracktoExt(CRRELPolyData,pSource,pTarget,raylen=1000):
         pathLength = ptsDistance(pSource, intersectionPt)
         dot=np.dot(v_i, v_n)
     else:
-        pathLength,dot=0.0,0.0
+        pathLength,dot=np.nan,np.nan
+
 
     return pathLength,dot
 
 
-def TracktoAbs(CRRELPolyData,pSource,pTarget,nIce,normalsMesh,obbTree,units='um',
-        nAir=1.00003,raylen=1000,polar=0,straight=True,maxBounce=100):
+def TracktoAbsStraight(pSource,pDir,nIce,normalsMesh,obbTree,
+        nAir=1.00003,raylen=1000):
+
     """
-    THIS IS A TRIMMED DOWN VERSION OF THE TrackPhoton Function that is designed to determine the Total Absorption probability of a Photon
-     OVER A GIVEN DISTANCE!
+    This is a special function that is not generally used, but included as part of a legacy test.
+    Basically, this function attempts to estimate F_ice by computing the fractional ice-path along a straight ray
+    (i.e., no reflection/refraction along the path).  This was added as a means to try and reduce computational expense, and may be useful
+    in the future.  Typically, this function produces LOWER f_ice than the Kaemfer model due to the fact that it eliminates all internal reflections
+    that can added to the ice-path length.  It is not recommended that this function is used in practice, but it is here anyway, and can be
+    accessed by setting the optional variable ("straight") = True in PhotonTrack.RayTracing_OpticalProperties().
 
-    # Increment ray path length
-    #                totalPathLength += ptsDistance(prevIntersectionPt, intersectionPt)
 
-    # Calculate probability that ray will be absorbed
-    #                Pabs = 1 - exp(-k * totalPathLength)
+    Inputs:
+        pSource - (3D vector) initial location of photon
+        pDir - (3D unit vector) intial direction of photon travel
+        nIce - (float) real part of the refractive index of ice (set from assumed WaveLength)
+        normalsMesh - (vtk object) mesh normal vectors -> Passed from CRRELPolyData object
+        obbTree - (vtk object) mesh object that contains information used to find intersections within the ray-tracing
+        nAir - (float: optional) refractive index of air
+        raylen - (float: optional) how far to cast ray in search of intersections (mm)
+
+
+    Returns:
+        TotalIceLength - (float) total distance (mm) traveled within the ice
+        TotalLength - (float) total distance (mm) traveled combined ice/air
+    """
+
+    pSource=np.array(pSource)
+    pTarget = pSource + pDir * raylen
+
+    intersections = np.reshape(np.array(pSource), (1,3))
+
+    TotalIceLength=0
+    TotalLength=0
+
+    distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+
+    TotalLength=np.sum(distances)
+
+    if isHit ==True:
+        TotalLength=np.sum(distances)
+        TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
+
+    return TotalIceLength,TotalLength
+
+
+def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
+        nAir=1.00003,raylen=1000,polar=0,maxBounce=100):
+    """
+    This function is essentially the Kaempfer model only without absorption.  In essence, this function initializes
+    a photon with a location/direction and tracks it within the mesh until it exits the mesh or undergoes more bounces than max bounce.
+
+
+    Inputs:
+        pSource - (3D vector) initial location of photon
+        pDir - (3D unit vector) intial direction of photon travel
+        nIce - (float) real part of the refractive index of ice (set from assumed WaveLength)
+        normalsMesh - (vtk object) mesh normal vectors -> Passed from CRRELPolyData object
+        obbTree - (vtk object) mesh object that contains information used to find intersections within the ray-tracing
+        nAir - (float: optional) refractive index of air
+        raylen - (float: optional) how far to cast ray in search of intersections (mm)
+        polar - (float: optional / developmental) flag that allows for the ray to be either horizontally or vertically polarized
+        maxBounec - (int: optional) cuts of photon tracking after this number of bounces.  Can significantly reduce computational expense
+
+
+    Returns:
+        TotalIceLength - (float) total distance (mm) traveled within the ice
+        TotalLength - (float) total distance (mm) traveled combined ice/air
+        intersections - (array [nBounces, 3]) array containing location of all intersections, can be useful for debugging.
     """
 
     inSnow = True ## yes, we are in the space.
-    ice = False #No we are not in Ice (or in this example, Glass)
+    ice = True #No we are not in Ice to start.
 
     pSource=np.array(pSource)
-    pTarget=np.array(pTarget)
+    pTarget = pSource + pDir * raylen
 
     intersections = np.reshape(np.array(pSource), (1,3))
 
     TotalIceLength=0
     TotalLength=0
     bounce=0
+    TIRbounce=0
+    first=True
     while inSnow:
-        if bounce > maxBounce:
+        if TIRbounce > 10: ## This takes care of total internal reflection bounce criteria
+            inSnow=False
+            ## You've done the max number of bounces allowed, leave!
+            break
+        if bounce > maxBounce: ## This takes care of total internal reflection bounce criteria
+            inSnow=False
             ## You've done the max number of bounces allowed, leave!
             break
 
         intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
-                                                                                obbTree, normalsMesh,ice)
+                                                                                obbTree, normalsMesh,ice,first=first)
+
         if isHit ==True:
             # Incident ray and surface normal vectors
             v_i = pts2unitVec(pSource, pTarget).squeeze()
             v_n = np.array(normalMeshIntersection).squeeze()
             # Check to see if ray if incident ray is inside or outside of dense material
             # Assign indices of refraction values
+            if first == True:
+                first = False
             if np.dot(v_i, v_n) < 0: ## you are in AIR!
                 # Assign indices of refraction values
                 n1 = nAir
                 n2 = nIce
                 # Is ray transmitted or reflected?
-                if straight == False:
-                    v_i_new, reflected,bounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
-                    if reflected:
-                        ice = False
-                    else:
-                        ice = True
-
+                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                if reflected:
+                    ice = False
                 else:
-                    ## continue in straight line, so v_i_new = intersection point.
-                    v_i_new = v_i
                     ice = True
 
             else: ## You are in ice!
@@ -439,109 +666,27 @@ def TracktoAbs(CRRELPolyData,pSource,pTarget,nIce,normalsMesh,obbTree,units='um'
                 n2 = nAir
                 v_n=-v_n
                 # If photon is not absorbed, is photon reflected?
-                if straight == False:
-                    v_i_new, reflected,bounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
-                    if reflected:
-                        ice = True
-                    else:
-                        ice = False
+                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                if reflected:
+                    ice = True
                 else:
-                    ## continue in straight line, so v_i_new = intersection point.
-                    v_i_new = v_i
                     ice = False
 
                 TotalIceLength+=ptsDistance(pSource, intersectionPt)
 
             ## Get Reflected/Transmitted Weights Amount ##
-
             TotalLength+=ptsDistance(pSource, intersectionPt)
             pSource = np.array(intersectionPt) + 1e-3 * v_i_new
             pTarget = np.array(intersectionPt) + raylen * v_i_new
             # If there are no intersection points, then the particle is gone!
 
             intersections = np.vstack((intersections, np.reshape(intersectionPt, (1,3))))
+            bounce+=1 ## Add to bounce count!
         else:
             inSnow = False
             break
 
     return TotalIceLength,TotalLength,intersections
-
-
-def RawPhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',
-                     nAir=1.00003,raylen=1000,polar=0,nBounce=40,converg=0.999,absorb=True):
-
-    assert hasattr(CRRELPolyData, 'isCRRELPolyData') == True,"This is not a CRRELPolyData Object, This function can only take CRRELPolyData Objects."
-
-    inSnow = True ## yes, we are in the space.
-    ice = False #No we are not in Ice (or in this example, Glass)
-
-    assert nBounce > 1, "nBouce must be greater than 1!"
-
-    pSource=np.array(pSource)
-    pTarget=np.array(pTarget)
-
-    intersections = np.reshape(np.array(pSource), (1,3))
-
-    incidentV= pts2unitVec(pTarget,pSource).squeeze()
-    total_path=0
-    currentWeight=1.0
-    for b in range(nBounce):
-        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
-                                                                            obbTree, normalsMesh,ice)
-        if b == 0 and isHit == False:
-            ## MISSES particle, return all -1s.
-            return -1,-1,True
-        else:
-            if isHit ==True:
-                # Incident ray and surface normal vectors
-                v_i = pts2unitVec(pSource, pTarget).squeeze()
-                v_n = np.array(normalMeshIntersection).squeeze()
-                # Check to see if ray if incident ray is inside or outside of dense material
-                # Assign indices of refraction values
-                if np.dot(v_i, v_n) < 0: ## you are in AIR!
-                    # Assign indices of refraction values
-                    n1 = nAir
-                    n2 = nIce
-                    # Is ray transmitted or reflected?
-                    v_i_new, reflected,bounce = isReflected(n1, n2, v_i, v_n,polar=polar)
-                    if reflected:
-                        ice = False
-                    else:
-                        ice = True
-
-
-                    iceDist=0.0
-                else: ## You are in ice!
-                    # Assign indices of refraction values
-                    n1 = nIce
-                    n2 = nAir
-                    v_n=-v_n
-                    # If photon is not absorbed, is photon reflected?
-                    v_i_new, reflected,bounce = isReflected(n1, n2, v_i, v_n,polar=polar)
-                    if reflected:
-                        ice = True
-                    else:
-                        ice = False
-
-                    iceDist+=ptsDistance(pSource, intersectionPt)
-
-                ## Get Reflected/Transmitted Weights Amount ##
-                pSource = np.array(intersectionPt) + 1e-3 * v_i_new
-                pTarget = np.array(intersectionPt) + raylen * v_i_new
-
-                if absorb == True:
-                    deltaW=(1.-np.exp(-(kIce*iceDist)))*currentWeight
-                    currentWeight=currentWeight-deltaW
-
-
-            else:
-                inSnow = False
-                break
-
-
-            Uvect=pts2unitVec(intersectionPt+ 1. * v_i_new,intersectionPt).squeeze()
-            return currentWeight,np.dot(incidentV,Uvect),False
-
 
 
 def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',
@@ -658,7 +803,6 @@ def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce
                 if np.sum(weights) >= converg-absorbed:
                     ## You're close enough, exit the loop!
                     break
-#    print("TOTAL PATH LENGTH (mm) = %s | Total absorbed = %s"%(total_path,absorbed))
     return weights,COSPHIS,intersections,False
 
 
@@ -917,5 +1061,4 @@ def AdvParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,n
             ## You're close enough, exit the loop!
             break
 
-#    print("TOTAL PATH LENGTH (mm) = %s | Total absorbed = %s"%(total_path,absorbed))
     return weights,COSPHIS,intersections,False

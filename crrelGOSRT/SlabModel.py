@@ -1496,14 +1496,13 @@ class SlabModel:
         from pandas import read_csv
 
         files=glob.glob('%s/*.csv'%filePath)
-        allowed=[os.path.basename(f) for f in files]
+        allowed=[os.path.basename(f).split('_')[0] for f in files]
         if material.lower() not in allowed:
             print('%s is not allowed, defaulting to %s '%(material.lower(),allowed[0]))
             print("Allowed Materials:")
             for i in allowed:
                 print(" -- %s"%i)
             material=allowed[0]
-
 
         RIfile=glob.glob('%s/*%s*.csv'%(filePath,material.lower()))[0]
         self.__RIFile=RIfile
