@@ -104,7 +104,7 @@ class _CRRELPolyData:
         from pandas import read_csv
 
         files=glob.glob(os.path.join(filePath,'*.csv'))
-        allowed=[f.split('/')[-1].split('_')[0] for f in files]
+        allowed=[os.path.split(f)[-1].split('_')[0] for f in files]
         if material.lower() not in allowed:
             print('%s is not allowe, defaulting to %s '%(material.lower(),allowed[0]))
             print("Allowed Materials:")
