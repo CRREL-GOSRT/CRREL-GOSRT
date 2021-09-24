@@ -639,12 +639,11 @@ def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMe
             p11=[x1,y1,z1]
             p22=[x2,y2,z2]
 
-            if Advanced == True:
+            if Advanced == False:
                 weights,COSPHIS,intersections,dummy=RTcode.ParticlePhaseFunction(CRRELPD,p11,p22,normalsMesh,obbTree,nIce,kIce,absorb=Absorb)
             else:
                 weights,COSPHIS,intersections,dummy=RTcode.AdvParticlePhaseFunction(CRRELPD,p11,p22,normalsMesh,obbTree,nIce,kIce,absorb=Absorb,
                                                                                  TrackThresh=TrackThresh,Tdepth=TrackDepthMax)
-
             if dummy == True or len(COSPHIS) ==0:
                 continue
 

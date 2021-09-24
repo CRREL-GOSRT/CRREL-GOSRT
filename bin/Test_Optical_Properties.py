@@ -9,9 +9,11 @@ import os
 
 pwd=os.getcwd()
 
-parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_3redo/Snow/FULL_Bottom/CRREL_MESH.vtk'
-GrainPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_3redo/Snow/GRAINS_Bottom/'
-OutputName='/Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Facets/Facets_Props/Facets_Example1.txt'
+parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_8_4/Snow/FULL/CRREL_MESH.vtk'
+GrainPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_8_4/Snow/GRAINS/'
+#parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_1/Snow/FULL_Top/CRREL_MESH.vtk'
+#GrainPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_1/Snow/GRAINS_Top/'
+OutputName='/Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Facets/Facets_Props/SLEET_Example1.txt'
 #OutputName='/Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Virgin_Snow/29_27.txt'
 
 #parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/CRREL Snow/CRREL_20Feb21/CRREL_newsnowf_20Feb21/VTK/newsnowf_20Feb21_17um_Rec/VOI/Snow/FULL/CRREL_MESH.vtk'
@@ -25,5 +27,5 @@ fig=PhotonTrack.RayTracing_OpticalProperties(parentPath,GrainPath,OutputName,Mat
                                          verbose=True,nPhotons=3500,Multi=False,GrainSamples=45,Advanced=True,
                                          FiceFromDensity=False,straight=False,maxBounce=120)
 
-fig.savefig('/Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Virgin_Snow/Facets_Example1.png',dpi=90)
+fig.savefig('/Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Virgin_Snow/CRUST2.png',dpi=90)
 plt.show()
