@@ -1,0 +1,45 @@
+## Comments with Pound signs!
+
+### File Paths and Names ###
+
+### This namelist is provided as an example for loading the optical properties associated with the fine grain sample discussed in the
+### Letcher et al. 20201 Manuscript.  Note that the user will need to set all the paths to the data and the optical properties files as 
+### required.  Lat/Lon isn't used for this example, unless the diffuse fraction is changed, and GetZenith() is called.
+
+
+MasterPath = /Path/to/optical/Properties/
+
+MaterialPath = /Path/to/Material/File/ice_RI.csv
+PropFileNames = FineGrain_OpticalProps.txt,
+
+## Snowpack Size and Layer Characteristics
+LayerTops = 250,0
+xSize = 10
+ySize = 10
+
+## Unit Configuration
+DepthUnits = mm
+WaveUnits = nm
+
+## Optional Contaminate Properties - Fsoot = 0, for pristine snow
+Fsoot = 0,0,0,0,0
+Contaminate = diesel
+
+## Phase function options
+PhaseFunc=2
+Asymmetry = 0.87
+PhaseSamples = 10000
+
+## Setting photon killing parameters
+RussianRouletteThresh = 0.02
+RussianRouletteWeight = 6
+
+## Geographic information, to aid in setting solar zenith and azimuth angles
+## only used when calling GetZenith()
+Latitude = 43.8163
+Longitude = -72.2740
+Time = 02-12 16:45
+Elevation = 553
+
+## Fraction of Diffuse Radiation.
+DiffuseFraction = 1.0
