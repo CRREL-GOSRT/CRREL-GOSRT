@@ -62,7 +62,8 @@ OutputName = os.path.join(OPT_PROP_OUTPATH,OutputFile)
 
 # Compute optical properties
 fig=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainPath,OutputName,MATERIAL_PATH,wavelen,VoxelRes,
-                                                              verbose=True,nPhotons=500,Multi=False,GrainSamples=30)
+                                         verbose=True,nPhotons=3500,Multi=False,GrainSamples=30,Advanced=True,
+                                         FiceFromDensity=False,straight=False,maxBounce=120)
 
 # Save figure
 fig.savefig(os.path.join(OPT_PROP_OUTPATH,'OptProps.png'),dpi=90)
