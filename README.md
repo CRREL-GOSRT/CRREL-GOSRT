@@ -1,7 +1,7 @@
 # CRREL-GOSRT
 CRREL Geometric Optics Snow Radiative Transfer (GOSRT) Model.
 
-![Four Panel Figure showing optical properties of a uCT sample from CRREL-GOSRT](bin/SampleData/Facets/FacetsMesh.png?raw=true "Facets")
+![Four Panel Figure showing optical properties of a uCT sample from CRREL-GOSRT](bin/SampleData/Facets/CoarseGrain_4Panel.png?raw=true "Facets")
 
 ## Introduction
 
