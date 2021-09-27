@@ -22,8 +22,9 @@ optical properties (extinction, absorption, scattering) from a closed manifold s
 
 ## PhotonTrack model usage
 
-```
+```python
 from crrelGOSRT import PhotonTrack
+from matplotlib import pyplot as plt
 
 parentPath='/Path/to/VTK/Mesh/CRREL_MESH.vtk'
 GrainPath='/Path/to/VTK/Mesh/GRAINS/'
@@ -35,15 +36,20 @@ VoxelRes='19.88250um'
 
 fig=PhotonTrack.RayTracing_OpticalProperties(parentPath,GrainPath,OutputName,
                                              MaterialPath,wavelen,VoxelRes)
+plt.show()
+
 ```
 
 ## 1D (Slab) model usage
 
-```
+```python
 from crrelGOSRT import SlabModel
+from matplotlib import pyplot as plt
 
 Slab=SlabModel.SlabModel()
 Slab.Initialize()
+## Get Zenith and Azimuth angle based on lat/lon/elevation and time in namelist using "solarposition"
+Azi,Zenith=Slab.GetZenith()
 
 Zenith=60
 Azi=0
@@ -51,4 +57,19 @@ Azi=0
 Wavelength = range(500,1000,50)
 Albedo, Absorption,Transmiss,transDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,
                                                               Azi,nPhotons=1000)
+
+fig=plt.figure()
+ax=plt.subplot(111)
+ax.plot(WaveLength,Albedo)
+ax.set_xlabel('WaveLength (nm)')
+ax.set_ylabel('Albedo')
+
 ```
+
+## Citations
+
+Theodore Letcher, Julie Parno, Zoe Courville, Lauren Farnsworth, Jason Olivier, A generalized photon-tracking approach to simulate spectral snow albedo and transmissivity using X-ray microtomography and geometric optics, The Cryosphere.  In Review.
+
+Citation for Solar Position:
+Ibrahim Reda, Afshin Andreas, Solar position algorithm for solar radiation applications, Solar Energy, Volume 76, Issue 5, 2004, Pages 577-589, ISSN 0038-092X, http://dx.doi.org/10.1016/j.solener.2003.12.003.
+Keywords: Global solar irradiance; Solar zenith angle; Solar azimuth angle; VSOP87 theory; Universal time; ΔUT1
