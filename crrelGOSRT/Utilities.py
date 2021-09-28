@@ -9,6 +9,8 @@ import numpy as np
 
 # search for Snow directory tool
 def directory_find(root, word):
+    """Simple function to find directories and paths.
+       Not called in most recent version of code, but left here as it may be useful in the future"""
     for path, dirs, files in os.walk(root):
         if word in dirs:
             return os.path.join(path, word)
