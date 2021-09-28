@@ -2,7 +2,9 @@ import vtk
 import numpy as np
 import sys
 
-"""Contains stand alone helper functions to facilitate the photon tracking RT code and interaction with rays and 3D mesh elements."""
+"""Contains stand alone helper functions to facilitate the photon tracking RT code and interaction with rays and 3D mesh elements.
+   Some functions here are a little old, but all of them support the photon tracking algorithms by performing vector operations and working with
+   3D meshes."""
 
 def HenYey(PHI,g=0.847):
     """Henyey-Greenstein Phase function approximation"""

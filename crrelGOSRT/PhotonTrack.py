@@ -22,6 +22,11 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         This function calls individual sub-functions to get optical properties and saves them to file for
         1D spectral albedo model:
 
+        Version 0.2.1 --> Some bug fixes and code cleaning has been performed (September 2021)
+            - Key Updates:
+                Added "Advanced" photon tracking to allow for more complete phase function calculations for complicated particles (e.g., aggregates or hollow colunms)
+                Added FiceFromDensity as a simple approximation for Fice using linear regression, instead of the computationally expensive ray-tracing
+
         Version 0.2 --> Replaced version 0.1 January 2021
             - Key Updates: moved "research" code to packaged functions --> Added comments / Function strings.
 

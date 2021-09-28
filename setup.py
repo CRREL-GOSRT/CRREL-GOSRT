@@ -5,7 +5,7 @@ except ImportError:
 
 setup(
     name='CRREL-GSORT',
-    version='0.5.0',
+    version='0.2.1',
     author='Ted Letcher, Julie Parno',
     author_email='Theodore.W.Letcher@erdc.dren.mil',
     packages=['crrelGOSRT', 'solarposition'],

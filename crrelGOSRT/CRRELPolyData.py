@@ -3,8 +3,21 @@ class _CRRELPolyData:
     """This is a private class contatining the shell data! required for holding poly data information!
        You should not attempt to call this function externally.
 
-       Note that this class is unique to the CRREL RTM, and is used throughout the larger models in place of
+       Note that this class is unique to the CRREL GOSRT, and is used throughout the larger models in place of
        standard vtk PolyData.
+
+       Defines a new objection within the CRREL GOSRT framework to hold the 3D mesh data and associated information.
+       ALL mesh data must be called in this format for use in the model, since this format pre-defines a lot of information
+       such as the boundaries, mesh normals, materials, resolution, etc.
+
+       This object is not designed to be called by the user, but rather is called internally when supplied with a simple vtk mesh and additional argurments.
+       Example Usage:
+
+            CRRELPolyData._CRRELPolyData(shell,xBounds,yBounds,zBounds,VoxelResolution,Density,description='REAL Snow Mesh')
+
+        where "shell" is the vtkMesh.
+
+        Admittedly, this object class requires more documentation, hopefully we can get around to adding it later!
     """
     def __init__(self,mesh,xBounds,yBounds,zBounds,resolution,density,units='mm',description='unknown'):
         import vtk
