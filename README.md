@@ -124,9 +124,9 @@ Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
 **Citation for CRREL-GOSRT:**
 
--Theodore Letcher, Julie Parno, Zoe Courville, Lauren Farnsworth, Jason Olivier, A generalized photon-tracking approach to simulate spectral snow albedo and transmissivity using X-ray microtomography and geometric optics, The Cryosphere.  *Submitted 09/2021: In Review*.
+* Theodore Letcher, Julie Parno, Zoe Courville, Lauren Farnsworth, Jason Olivier, A generalized photon-tracking approach to simulate spectral snow albedo and transmissivity using X-ray microtomography and geometric optics, The Cryosphere.  *Submitted 09/2021: In Review*.
 
 **Citation for Solar Position:**
 
--Ibrahim Reda, Afshin Andreas, Solar position algorithm for solar radiation applications, Solar Energy, Volume 76, Issue 5, 2004, Pages 577-589, ISSN 0038-092X, http://dx.doi.org/10.1016/j.solener.2003.12.003.
+* Ibrahim Reda, Afshin Andreas, Solar position algorithm for solar radiation applications, Solar Energy, Volume 76, Issue 5, 2004, Pages 577-589, ISSN 0038-092X, http://dx.doi.org/10.1016/j.solener.2003.12.003.
 Keywords: Global solar irradiance; Solar zenith angle; Solar azimuth angle; VSOP87 theory; Universal time; ΔUT1
