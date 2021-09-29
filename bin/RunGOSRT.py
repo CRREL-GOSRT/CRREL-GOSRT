@@ -9,9 +9,9 @@ from file_pathnames import *
 
 import sys
 sys.path.append(CODE_PATH)
-import ImageSeg
-import Utilities as util
-from main import PhotonTrack
+from crrelGOSRT import ImageSeg
+from crrelGOSRT import Utilities as util
+from crrelGOSRT import PhotonTrack
 import glob
 import os
 from matplotlib import pyplot as plt
@@ -61,8 +61,9 @@ GrainPath = os.path.join(VTK_DATA_OUTPATH,'GRAINS','')
 OutputName = os.path.join(OPT_PROP_OUTPATH,OutputFile)
 
 # Compute optical properties
-fig,pf,thetas,dtheta=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainPath,OutputName,MATERIAL_PATH,wavelen,VoxelRes,
-                                         verbose=True,nPhotons=500,Multi=False,GrainSamples=30)
+fig=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainPath,OutputName,MATERIAL_PATH,wavelen,VoxelRes,
+                                         verbose=True,nPhotons=3500,Multi=False,GrainSamples=30,Advanced=True,
+                                         FiceFromDensity=False,straight=False,maxBounce=120)
 
 # Save figure
 fig.savefig(os.path.join(OPT_PROP_OUTPATH,'OptProps.png'),dpi=90)

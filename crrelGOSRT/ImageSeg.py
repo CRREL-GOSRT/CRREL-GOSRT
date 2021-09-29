@@ -37,8 +37,8 @@ import pymeshfix as mf
 from matplotlib import pyplot as plt
 import glob
 from matplotlib.image import imread
-import CRRELPolyData
-import RenderFunctions
+from crrelGOSRT import CRRELPolyData
+from crrelGOSRT import RenderFunctions
 from scipy import signal, ndimage as ndi
 from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
