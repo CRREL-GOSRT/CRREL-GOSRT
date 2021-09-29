@@ -63,14 +63,20 @@ def GetZenith(time,latitude,longitude,elevation,timeformat='%Y-%m-%d_%H:%M:%S'):
     return az-90,zen
 
 
+### EXAMPLE ON HOW TO USE "solarposition" to get Azimuth and Zenith angle from lat/lon/time!
+### NOTE THIS REQUIRES THAT YOU HAVE the 'solarposition' package from: https://github.com/s-bear/sun-position.git installed.
 Latitude = 43.8163
 Longitude = -72.2740
 Time = '02-12 15:35'
 Elevation = 553
 TimeFormat='%m-%d %H:%M'
-
 Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
+###
+
+
+
+#### HERE IS AN EXAMPLE ON HOW TO GENERATE 3D MESHES FOLLOWING THE WATERSHED SEGMENTATION ALGORITHMS###
 
 #%% MicroCT Data Processing
 # Find directory with microCT binary images
@@ -88,7 +94,6 @@ voxelRes=19.88250/1000. ## in millimeters, given in microCT log file
 decimate = 0.9 # The decimal percentage of mesh triangles to eliminate
 fullMeshName='CRREL_MESH.vtk' ## Name of FULL Mesh .VTK file. (i.e., mesh created by aggregating all the grains)
 
-
 # Read MicroCT data
 SNOW, grid = ImageSeg.ImagesToArray(MCT_PATH,VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes)
 
@@ -97,7 +102,11 @@ grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,
 
 # Generate mesh
 ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,minpoints,decimate,VTK_DATA_OUTPATH,fullMeshName,check=False)
+##
+##
+##
 
+#### HERE IS AN EXAMPLE ON HOW TO GENERATE OPTICAL PROPERTIES FROM 3D MESH###
 #%% Run photon-tracking model to get sample optical properties
 
 # Define voxel resolution and wavelength of light used in computing optical properties
@@ -119,11 +128,14 @@ fig,pf,thetas,dtheta=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainP
 # Save figure
 fig.savefig(os.path.join(OPT_PROP_OUTPATH,'OptProps.png'),dpi=90)
 plt.show()
+##
+##
+##
 
+#### HERE IS AN EXAMPLE ON HOW TO RUN THE 1D SLAB MODEL###
 #%% Run Slab Model
 
 import SlabModel
-
 Slab=SlabModel.SlabModel(namelist='Mynamelist.txt')
 Slab.Initialize()
 Azi,Zenith=Slab.GetZenith()
