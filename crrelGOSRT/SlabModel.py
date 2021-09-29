@@ -114,11 +114,6 @@ class SlabModel:
                            'RussianRouletteWeight':6,
                            'xSize':10,
                            'ySize':10,
-                           'Latitude':41.11,
-                           'Longitude':-72.4,
-                           'Elevation':0.0,
-                           'Time':'12-13 17:00',
-                           'TimeFormat':'%m-%d %H:%M',
                            'DiffuseFraction':0
                            }
 
@@ -324,10 +319,6 @@ class SlabModel:
             self.__DiffuseFraction = 1.0
 
         ## Now initialize the lat/lon/time
-        self.__latitude=self.namelistDict['Latitude']
-        self.__longitude=self.namelistDict['Longitude']
-        self.__elevation=self.namelistDict['Elevation']
-        self.__time=self.namelistDict['Time']
         self.__initialized = True
 
         print("Finished initializing Model parameters")
@@ -539,11 +530,6 @@ class SlabModel:
                 print("  Id = %s | ext = %s | Fice = %s | Fsoot = %s"%(i,self.__ExtCoeffDict[i],self.__FiceDict[i],self.__SootDict[i]))
 
             print("Diffuse Fraction %s"%self.__DiffuseFraction)
-            print("*Only used in the 'GetZenith' function for approximating Zenith and Azimuth angle.")
-            print("*Latitude = %s"%self.__latitude)
-            print("*Longitude = %s"%self.__longitude)
-            print("*Elevation = %s"%self.__elevation)
-            print("*Time (UTC) =%s"%self.__time)
 
             print("Surface? %s"%str(self.__Surface))
             print("")
@@ -1585,46 +1571,6 @@ class SlabModel:
         self.namelistDict=NamelistDict
         return
 
-    def GetZenith(self):
-        """
-            Public function that returns a zenith and azimuth angle from the
-            lat/lon/time coordinates in the namelist dictionary.
-
-            Copyright (c) 2015 Samuel Bear Powell
-
-            Note that this uses the publically available "sunposition"
-            code written by Samuel Bear Powell and available from:
-            https://github.com/s-bear/sun-position.git
-
-            Use of this code is used in accordance with the MIT license, and is used
-            solely for the purposes of computing solar zenith and azimuth angles as inputs to the
-            RTM code.  Note that this code is included in the "main" directory as solarposition
-
-            Ibrahim Reda, Afshin Andreas, Solar position algorithm for solar radiation applications,
-            Solar Energy, Volume 76, Issue 5, 2004, Pages 577-589, ISSN 0038-092X,
-            http://dx.doi.org/10.1016/j.solener.2003.12.003.
-        """
-        from solarposition import sunposition as sunPos
-        from datetime import datetime as DT
-
-
-        print("------------------------")
-        print("  USING sunposition.py to estimate solar zenith and azimuth angle!" )
-        print("  Returns azimuth angle and zenith angle in degrees! ")
-        print("  Note that the azimuth angle here is 0 for the east direction!")
-        print("------------------------")
-        time=DT.strptime(self.__time,self.namelistDict['TimeFormat'])
-
-        az,zen = sunPos.sunpos(time,self.__latitude,self.__longitude,self.__elevation)[:2] #discard RA, dec, H
-
-        if np.cos(np.radians(zen)) <= 0:
-            print("------------------------")
-            print("Sun is Below Horizon at %.2f/%.2f at %s UTC"%(self.self.__latitude,self.__longitude,self.__time))
-            print("!!!You Cannot use these angles to set the incident radiation!!!")
-            print(" Azimuth= %.2f/ Zenith = %.2f"%(az-90,zen))
-            print("------------------------")
-
-        return az-90,zen
 
     def WriteSpectralToFile(self,outfileName,nPhotons,Zenith,Azimuth
                 ,WaveLength,Albedo,Absorption,Transmission,filename='Untitled'):

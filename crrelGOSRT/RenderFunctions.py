@@ -57,20 +57,20 @@ def addPoint(renderer, p, radius=1.0, color=[0.0, 0.0, 0.0], opacity=1.0):
 
 
 def addLine(renderer, p1, p2, color=[0.0, 0.0, 1.0], lineWidth=4.0):
-        """
-            Draws a point on an existing renderer connecting p1 and p2
+    """
+        Draws a point on an existing renderer connecting p1 and p2
 
-            Inputs:
-                - renderer (vtk renderer object)
-                - p1 (tuple vector) coordinates of point1
-                - p2 (tuple vector) coordinates of point2 - connected point
+        Inputs:
+            - renderer (vtk renderer object)
+            - p1 (tuple vector) coordinates of point1
+            - p2 (tuple vector) coordinates of point2 - connected point
 
-                - color (optional : 3D vector) RGB color values of point
-                - lineWidth (optional : float) width of line
+            - color (optional : 3D vector) RGB color values of point
+            - lineWidth (optional : float) width of line
 
-            Returns:
-                None
-        """
+        Returns:
+            None
+    """
     line = vtk.vtkLineSource()
     line.SetPoint1(p1)
     line.SetPoint2(p2)
@@ -163,17 +163,17 @@ def Render3DMesh(CRRELPolyData,bcolor=(0,0,0),opacity=0.95,orientation=True,Boun
 
 
 def ShowRender(renderer,camera=None,size=(800,800)):
-        """
-            Displays the renderer object on the screen.
+    """
+        Displays the renderer object on the screen.
 
-            Inputs:
-                - renderer (vtk renderer object)
+        Inputs:
+            - renderer (vtk renderer object)
 
-                - camera (optional: vtk camera object) if "None", this will define a default camera, otherwise it will use a camera passed by the user.
-                - size (optional: 2D tuple) determines the size (in pixels) of the display window.
-            Returns:
-                None
-        """
+            - camera (optional: vtk camera object) if "None", this will define a default camera, otherwise it will use a camera passed by the user.
+            - size (optional: 2D tuple) determines the size (in pixels) of the display window.
+        Returns:
+            None
+    """
     if camera == None:
         camera = vtk.vtkCamera()
         camera.SetPosition(0,-10,10)

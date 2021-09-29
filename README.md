@@ -37,8 +37,6 @@ from matplotlib import pyplot as plt
 
 Slab=SlabModel.SlabModel()
 Slab.Initialize()
-## Get Zenith and Azimuth angle based on lat/lon/elevation and time in namelist using "solarposition"
-Azi,Zenith=Slab.GetZenith()
 
 Zenith=60
 Azi=0
@@ -47,6 +45,11 @@ Wavelength = range(500,1000,50)
 Albedo, Absorption,Transmiss,transDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,
                                                               Azi,nPhotons=1000)
 
+## Write data out to file ##
+Slab.WriteSpectralToFile('./TestOutput.txt',
+      1000,Zenith,Azi,WaveLength,Albedo,Absorption,Transmiss,filename='Test Output')
+
+## Plot a figure ##
 fig=plt.figure()
 ax=plt.subplot(111)
 ax.plot(WaveLength,Albedo)
@@ -55,21 +58,75 @@ ax.set_ylabel('Albedo')
 plt.show()
 ```
 
+## Use with "solarposition" get get Zenith/Azimuth angle from latlon:
+
+Here is a helpful function that uses the "solarposition" package ([https://github.com/s-bear/sun-position.git](https://github.com/s-bear/sun-position.git))
+to get the azimuth and zenith angle for a specific location and time.
+
+```python
+  def GetZenith(time,latitude,longitude,elevation,timeformat='%Y-%m-%d_%H:%M:%S'):
+    from solarposition import sunposition as sunPos
+    from datetime import datetime as DT
+    """
+        Function to compute Zenith and Azimuth angle (in degrees) From lat/lon/time/elevation
+
+        Inputs: time (strptime, or string)
+
+
+        Copyright (c) 2015 Samuel Bear Powell
+
+        Note that this uses the publically available "sunposition"
+        code written by Samuel Bear Powell and available from:
+        https://github.com/s-bear/sun-position.git
+
+        Use of this code is used in accordance with the MIT license, and is used
+        solely for the purposes of computing solar zenith and azimuth angles as inputs to the
+        RTM code.  Note that this code is included in the "main" directory as solarposition
+
+        Ibrahim Reda, Afshin Andreas, Solar position algorithm for solar radiation applications,
+        Solar Energy, Volume 76, Issue 5, 2004, Pages 577-589, ISSN 0038-092X,
+        http://dx.doi.org/10.1016/j.solener.2003.12.003.
+    """
+
+    print("------------------------")
+    print("  USING sunposition.py to estimate solar zenith and azimuth angle!" )
+    print("  Returns azimuth angle and zenith angle in degrees! ")
+    print("  Note that the azimuth angle here is 0 for the east direction!")
+    print("------------------------")
+
+    if isinstance(time,DT) == False:
+        if isinstance(time,str) == False:
+            print("Time must either be a string or a datetime!")
+            sys.exit()
+        time=DT.strptime(time,timeformat)
+
+    az,zen = sunPos.sunpos(time,latitude,longitude,elevation)[:2] #discard RA, dec, H
+
+    if np.cos(np.radians(zen)) <= 0:
+        print("------------------------")
+        print("Sun is Below Horizon at %.2f/%.2f at %s UTC"%(latitude,longitude,time))
+        print("!!!You Cannot use these angles to set the incident radiation!!!")
+        print(" Azimuth= %.2f/ Zenith = %.2f"%(az-90,zen))
+        print("------------------------")
+
+    return az-90,zen
+
+Latitude = 44.11
+Longitude = -73.92
+Time = '02-12 15:35'
+Elevation = 1628
+TimeFormat='%m-%d %H:%M'
+
+Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
+```
+
 ## Citations
 
--Theodore Letcher, Julie Parno, Zoe Courville, Lauren Farnsworth, Jason Olivier, A generalized photon-tracking approach to simulate spectral snow albedo and transmissivity using X-ray microtomography and geometric optics, The Cryosphere.  *Submitted: In Review*.
+**Citation for CRREL-GOSRT:**
+
+-Theodore Letcher, Julie Parno, Zoe Courville, Lauren Farnsworth, Jason Olivier, A generalized photon-tracking approach to simulate spectral snow albedo and transmissivity using X-ray microtomography and geometric optics, The Cryosphere.  *Submitted 09/2021: In Review*.
 
 **Citation for Solar Position:**
+
 -Ibrahim Reda, Afshin Andreas, Solar position algorithm for solar radiation applications, Solar Energy, Volume 76, Issue 5, 2004, Pages 577-589, ISSN 0038-092X, http://dx.doi.org/10.1016/j.solener.2003.12.003.
 Keywords: Global solar irradiance; Solar zenith angle; Solar azimuth angle; VSOP87 theory; Universal time; ΔUT1
-
-
-
-## Recent Tasks
-
-- [x] Initial Code Packaging with __init__.py and setup.py files
-- [x] Reorganization of subfolders to match standard syntax (e.g., main -> crrelGOSRT and Examples -> bin)
-- [x] Usable README.md file
-- [x] added imageSegJulie.py to "bin" folder
-- [x] Clean code for publication
-- [x] Add sample data and update paper figures to match.

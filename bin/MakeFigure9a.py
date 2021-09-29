@@ -33,11 +33,11 @@ Slab.namelistDict['MasterPath']='YOUR/PATH/HERE/'
 SnowTypes=['FineGrain_OpticalProps.txt','Facets_OpticalProps.txt']
 Slab.namelistDict['LayerTops']=[depth,0] ## Single layer model, top is depth, bottom is zero.
 
+Azi,Zenith=65.,60.
 ## loop over each snow type, and tun the spectral model.
 for sdx, s in enumerate(SnowTypes):
     Slab.namelistDict['PropFileNames']=[s]
     Slab.Initialize() ## Initialize the model (i.e., encode the namelist dictionary into hard variables.)
-    Azi,Zenith=Slab.GetZenith() ## Get Zenith and Azimuth angle based on lat/lon/elevation and time in namelist.
 
     Albedo, Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=nPhotons) # RUN THE MODEL!
 
