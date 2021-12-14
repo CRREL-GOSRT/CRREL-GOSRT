@@ -351,21 +351,21 @@ def castFirst(pSource,pTarget,obbTree,normalsMesh):
         pointsIntersectionData = pointsIntersection.GetData()
         for idx in np.arange(pointsIntersection.GetNumberOfPoints()):
             intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
-            if ptsDistance(intersectionPt,pSource) > 0.001:
+            if ptsDistance(intersectionPt,pSource) > 0.0001:
                 isHit = True
                 v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
                 cellIdIntersection = cellIds.GetId(idx)
                 intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
                 normalMeshIntersection = v_n
-
-                if np.dot(v_i,v_n) > 0 and idx == 0:
-                    continue
-
-                if idx > 3:
-                    ## TOO FAR! ##
-                    isHit = False
-                    break
                 break
+                # if np.dot(v_i,v_n) > 0 and idx == 0:
+                #     continue
+                #
+                # if idx > 3:
+                #     ## TOO FAR! ##
+                #     isHit = False
+                #     break
+                # break
             else:
                 continue
 
@@ -502,7 +502,7 @@ def TracktoExt_multi(CRRELPolyData,pSource,vectors):
 
     return dists,points,ind_tri,ind_ray,pvmesh
 
-def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000):
+def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000,AirOnly=False):
     import pyvista as pv
     """
     This function sets a particle initial location / direction and looks for the first mesh intersection.
@@ -529,8 +529,12 @@ def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000):
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
 
-    intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castFirst(pSource, pTarget,
-                                                                            obbTree, normalsMesh)
+    if AirOnly == False:
+        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castFirst(pSource, pTarget,
+                                                                                obbTree, normalsMesh)
+    else:
+        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
+                                                                                obbTree, normalsMesh,inside=False)
 
     if isHit ==True:
         # Incident ray and surface normal vectors
@@ -590,6 +594,117 @@ def TracktoAbsStraight(pSource,pDir,nIce,normalsMesh,obbTree,
         TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
 
     return TotalIceLength,TotalLength
+
+
+def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
+        nAir=1.00003,raylen=1000,polar=0,maxBounce=100):
+    """
+    This function is essentially the Kaempfer model only without absorption.  In essence, this function initializes
+    a photon with a location/direction and tracks it within the mesh until it exits the mesh or undergoes more bounces than max bounce.
+
+
+    Inputs:
+        pSource - (3D vector) initial location of photon
+        pDir - (3D unit vector) intial direction of photon travel
+        nIce - (float) real part of the refractive index of ice (set from assumed WaveLength)
+        normalsMesh - (vtk object) mesh normal vectors -> Passed from CRRELPolyData object
+        obbTree - (vtk object) mesh object that contains information used to find intersections within the ray-tracing
+        nAir - (float: optional) refractive index of air
+        raylen - (float: optional) how far to cast ray in search of intersections (mm)
+        polar - (float: optional / developmental) flag that allows for the ray to be either horizontally or vertically polarized
+        maxBounec - (int: optional) cuts of photon tracking after this number of bounces.  Can significantly reduce computational expense
+
+
+    Returns:
+        TotalIceLength - (float) total distance (mm) traveled within the ice
+        TotalLength - (float) total distance (mm) traveled combined ice/air
+        intersections - (array [nBounces, 3]) array containing location of all intersections, can be useful for debugging.
+    """
+
+    inSnow = True ## yes, we are in the space.
+    ice = True #No we are not in Ice to start.
+
+    pSource=np.array(pSource)
+    pTarget = pSource + pDir * raylen
+
+    intersections = np.reshape(np.array(pSource), (1,3))
+
+    TotalIceLength=0
+    TotalLength=0
+    bounce=0
+    TIRbounce=0
+    first=True
+
+    weights=[]
+    COSPHIS=[]
+    while inSnow:
+        if TIRbounce > 10: ## This takes care of total internal reflection bounce criteria
+            inSnow=False
+            ## You've done the max number of bounces allowed, leave!
+            break
+        if bounce > maxBounce: ## This takes care of total internal reflection bounce criteria
+            inSnow=False
+            ## You've done the max number of bounces allowed, leave!
+            break
+
+        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
+                                                                                obbTree, normalsMesh,ice,first=first)
+
+        if isHit ==True:
+            # Incident ray and surface normal vectors
+            v_i = pts2unitVec(pSource, pTarget).squeeze()
+            v_n = np.array(normalMeshIntersection).squeeze()
+            # Check to see if ray if incident ray is inside or outside of dense material
+            # Assign indices of refraction values
+            if first == True:
+                first = False
+            if np.dot(v_i, v_n) < 0: ## you are in AIR!
+                # Assign indices of refraction values
+                n1 = nAir
+                n2 = nIce
+                # Is ray transmitted or reflected?
+                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                if reflected:
+                    ice = False
+                else:
+                    ice = True
+
+            else: ## You are in ice!
+                # Assign indices of refraction values
+                n1 = nIce
+                n2 = nAir
+                v_n=-v_n
+                # If photon is not absorbed, is photon reflected?
+                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                if reflected:
+                    ice = True
+                else:
+                    ice = False
+
+                TotalIceLength+=ptsDistance(pSource, intersectionPt)
+
+            ## GET PHASE FUNCTION FOR RELFECTION / TRANSMISSION! ##
+            v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
+            COSPHI=np.dot(v_i,v_i_ref)
+            weights.append(reflect)
+            COSPHIS.append(COSPHI)
+            COSPHI=np.dot(v_i,v_i_tran)
+            COSPHIS.append(COSPHI)
+            weights.append(transmiss)
+
+            ## Get Reflected/Transmitted Weights Amount ##
+            TotalLength+=ptsDistance(pSource, intersectionPt)
+            pSource = np.array(intersectionPt) + 1e-3 * v_i_new
+            pTarget = np.array(intersectionPt) + raylen * v_i_new
+            # If there are no intersection points, then the particle is gone!
+
+            intersections = np.vstack((intersections, np.reshape(intersectionPt, (1,3))))
+            bounce+=1 ## Add to bounce count!
+        else:
+            inSnow = False
+            break
+
+    return TotalIceLength,TotalLength,intersections,weights,COSPHIS
 
 
 def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
@@ -747,7 +862,8 @@ def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce
                                                                             obbTree, normalsMesh,ice)
         if b == 0 and isHit == False:
             ## MISSES particle, return all -1s.
-            return -1,-1,-1,True
+            return -1,-1,-1,-1,True
+            #return [1],[np.dot(incidentV,incidentV)],[],False
         else:
             if isHit ==True:
                 ## First ray hits the particle.
@@ -805,7 +921,9 @@ def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce
                 if np.sum(weights) >= converg-absorbed:
                     ## You're close enough, exit the loop!
                     break
-    return weights,COSPHIS,intersections,False
+
+    ScatAlb=1.-absorbed/(np.sum(weights)+absorbed)
+    return weights,COSPHIS,intersections,ScatAlb,False
 
 
 
@@ -868,7 +986,8 @@ def AdvParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,n
                                                                             obbTree, normalsMesh,ice)
         if b == 0 and isHit == False:
             ## MISSES particle, return all -1s.
-            return -1,-1,-1,True
+            return -1,-1,-1,-1,True
+            #return [1],[np.dot(incidentV,incidentV)],[],False
         else:
             if isHit ==True:
                 ## First ray hits the particle.
@@ -1050,7 +1169,7 @@ def AdvParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,n
 
                         intersections = np.vstack((intersections, np.reshape(intersectionPt, (1,3))))
 
-                        if np.sum(weights) >= converg-absorbed:
+                        if 1-currentWeight >= converg:
                             ## You're close enough, exit the loop!
                             break
 
@@ -1063,4 +1182,6 @@ def AdvParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,n
             ## You're close enough, exit the loop!
             break
 
-    return weights,COSPHIS,intersections,False
+#    print(absorbed,np.sum(weights),absorbed/np.sum(weights),1.-absorbed/np.sum(weights))
+    ScatAlb=1.-absorbed/(np.sum(weights)+absorbed)
+    return weights,COSPHIS,intersections,ScatAlb,False
