@@ -127,8 +127,8 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
     distances=[]
     dd=VoxelRes_mm
-    while(dd < 1.05*(SnowMesh.xBounds[1]-SnowMesh.xBounds[0])):
-        dd+=VoxelRes_mm
+    while(dd < 1.*(SnowMesh.xBounds[1]-SnowMesh.xBounds[0])):
+        dd+=2.*VoxelRes_mm
         distances.append(dd)
     distances=np.array(distances)
     if isinstance(wavelen,list) == True:
@@ -185,10 +185,10 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     time1=datetime.now()
     if FiceFromDensity == False:
         if particlePhase == True:
-            Fice, TotalLengths,missed=ComputeFice(SnowMesh,nIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
+            Fice, TotalLengths,missed,InternalReflections,ExternalReflections=ComputeFice(SnowMesh,nIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
                                                   straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase)
         else:
-            Fice,TotalLengths,missed,POWER,thetas=ComputeFice(SnowMesh,nIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
+            Fice,TotalLengths,missed,POWER,thetas,InternalReflections,ExternalReflections=ComputeFice(SnowMesh,nIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
                                                   straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase)
 
     else:
@@ -210,6 +210,13 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         ax.set_ylabel("Count")
         ax.grid()
         plt.title("Histogram of $F_{ice}$",loc='left')
+
+        InternalReflections=np.array(InternalReflections)
+        ExternalReflections=np.array(ExternalReflections)
+
+        print("Mean of internal reflections: %.2f"%np.nanmean(InternalReflections))
+        print("Mean of ExternalReflections reflections: %.2f"%np.nanmean(ExternalReflections))
+        print("Ratio Internal/External = %.2f"%np.nanmean(InternalReflections/ExternalReflections))
 
     if particlePhase == True:
         print("Computing Scattering Phase Function using %s Grain Samples..."%GrainSamples)
@@ -401,6 +408,8 @@ def ComputeFice(SnowMesh,nIce,nPhotons,Polar = False, maxBounce = 100,verbose=Fa
     Fice=[]
     TotalLengths=[]
     missed=0
+    InternalReflections=[]
+    ExternalReflections=[]
     for ii in range(nPhotons):
         axis=np.random.randint(0,6) ## Choose random axis (x,y,z)
         if axis == 0: ## If x Axis
@@ -437,7 +446,7 @@ def ComputeFice(SnowMesh,nIce,nPhotons,Polar = False, maxBounce = 100,verbose=Fa
         ##Run the photon tracking model through the code!
         if particlePhase == True:
             if straight == False:
-                TotalIceLength,TotalLength,intersections=RTcode.TracktoAbs(p11,pDir,nIce,normalsMesh,obbTree,
+                TotalIceLength,TotalLength,intersections,IReflect,ExReflect=RTcode.TracktoAbs(p11,pDir,nIce,normalsMesh,obbTree,
                         nAir=1.00003,raylen=1000,polar=Polar,maxBounce=maxBounce)
             else:
                 TotalIceLength,TotalLength=RTcode.TracktoAbsStraight(p11,pDir,nIce,normalsMesh,obbTree,
@@ -451,7 +460,7 @@ def ComputeFice(SnowMesh,nIce,nPhotons,Polar = False, maxBounce = 100,verbose=Fa
                 binCenters=(bins[:-1]+bins[1:])/2.
                 POWER=np.zeros_like(binCenters)
 
-            TotalIceLength,TotalLength,intersections,weights,COSPHIS=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,normalsMesh,obbTree,
+            TotalIceLength,TotalLength,intersections,weights,COSPHIS,IReflect,ExReflect=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,normalsMesh,obbTree,
                     nAir=1.00003,raylen=1000,polar=Polar,maxBounce=maxBounce)
 
 
@@ -473,6 +482,9 @@ def ComputeFice(SnowMesh,nIce,nPhotons,Polar = False, maxBounce = 100,verbose=Fa
         Fice.append(TotalIceLength/TotalLength)
         TotalLengths.append(TotalLength)
 
+        ExternalReflections.append(ExReflect)
+        InternalReflections.append(IReflect)
+
     if particlePhase == True:
         return Fice,TotalLengths,missed
 
@@ -482,7 +494,7 @@ def ComputeFice(SnowMesh,nIce,nPhotons,Polar = False, maxBounce = 100,verbose=Fa
         dOmega = np.sin(thetas[:])*dtheta*2*np.pi
         POWER=4.*np.pi*POWER[:]/(N*dOmega)
 
-        return Fice,TotalLengths,missed,POWER,thetas
+        return Fice,TotalLengths,missed,POWER,thetas,InternalReflections,ExternalReflections
 
 def ComputeExtinction(SnowMesh,distances,kIce,nPhotons,Multi=False,verbose=False,trim=False,AirOnly=False):
     """Computes the k_{ext} optical property by running a customized version of the
@@ -621,8 +633,9 @@ def ComputeExtinction(SnowMesh,distances,kIce,nPhotons,Multi=False,verbose=False
 
 
             distances=np.array(distances)
+            extinction=np.array(extinction)
 
-            popt, pcov = curve_fit(CurveFit, distances,extinction,p0=(0.5))
+            popt, pcov = curve_fit(CurveFit, distances,extinction,p0=(1.5))
             kExt = popt[0]
 
     return popt,kExt,distances,extinction,bad

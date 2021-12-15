@@ -612,7 +612,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
         nAir - (float: optional) refractive index of air
         raylen - (float: optional) how far to cast ray in search of intersections (mm)
         polar - (float: optional / developmental) flag that allows for the ray to be either horizontally or vertically polarized
-        maxBounec - (int: optional) cuts of photon tracking after this number of bounces.  Can significantly reduce computational expense
+        maxBounce - (int: optional) cuts of photon tracking after this number of bounces.  Can significantly reduce computational expense
 
 
     Returns:
@@ -635,10 +635,13 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
     TIRbounce=0
     first=True
 
+    NumInternalReflect=0
+    NumExternalReflect=0
+
     weights=[]
     COSPHIS=[]
     while inSnow:
-        if TIRbounce > 10: ## This takes care of total internal reflection bounce criteria
+        if TIRbounce > 15: ## This takes care of total internal reflection bounce criteria
             inSnow=False
             ## You've done the max number of bounces allowed, leave!
             break
@@ -666,6 +669,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if reflected:
                     ice = False
+                    NumExternalReflect+=1
                 else:
                     ice = True
 
@@ -678,6 +682,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if reflected:
                     ice = True
+                    NumInternalReflect+=1
                 else:
                     ice = False
 
@@ -704,7 +709,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
             inSnow = False
             break
 
-    return TotalIceLength,TotalLength,intersections,weights,COSPHIS
+    return TotalIceLength,TotalLength,intersections,weights,COSPHIS,NumInternalReflect,NumExternalReflect
 
 
 def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
@@ -745,8 +750,10 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
     bounce=0
     TIRbounce=0
     first=True
+    NumInternalReflect=0
+    NumExternalReflect=0
     while inSnow:
-        if TIRbounce > 10: ## This takes care of total internal reflection bounce criteria
+        if TIRbounce > 15: ## This takes care of total internal reflection bounce criteria
             inSnow=False
             ## You've done the max number of bounces allowed, leave!
             break
@@ -774,6 +781,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if reflected:
                     ice = False
+                    NumExternalReflect +=1
                 else:
                     ice = True
 
@@ -786,6 +794,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if reflected:
                     ice = True
+                    NumInternalReflect+=1
                 else:
                     ice = False
 
@@ -803,7 +812,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             inSnow = False
             break
 
-    return TotalIceLength,TotalLength,intersections
+    return TotalIceLength,TotalLength,intersections,NumInternalReflect,NumExternalReflect
 
 
 def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',
