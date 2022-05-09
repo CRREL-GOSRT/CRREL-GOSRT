@@ -77,7 +77,7 @@ Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
 #%% MicroCT Data Processing
 # Find directory with microCT binary images
-MCT_PATH = Utilities.directory_find(MCT_IMAGE_PATH,'Snow')
+MCT_PATH = util.directory_find(MCT_IMAGE_PATH,'Snow')
 
 # Set data parameters for sub-sampling and mesh generation
 XYstart = 8.0 # The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
@@ -107,8 +107,10 @@ ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,minp
 wavelen='900nm'
 VoxelRes='19.88250um'
 
+
 # Output filename
-OutputFile = 'Optical_Properties_updated.txt'
+OutputFile = 'Optical_Properties_updated2.txt'
+fullMeshName='SphereMesh_025mm_8mm3.vtk'
 
 # File definitions (shouldn't have to change)
 VTKFilename = os.path.join(VTK_DATA_OUTPATH,fullMeshName)
@@ -118,10 +120,10 @@ OutputName = os.path.join(OPT_PROP_OUTPATH,OutputFile)
 # Compute optical properties
 fig=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainPath,OutputName,MATERIAL_PATH,wavelen,VoxelRes,
                                          verbose=True,nPhotons=3500,Multi=False,GrainSamples=30,Advanced=True,
-                                         FiceFromDensity=False,straight=False,maxBounce=120)
+                                         FiceFromDensity=False,straight=False,maxBounce=120,particlePhase=False)
 
 # Save figure
-fig.savefig(os.path.join(OPT_PROP_OUTPATH,'OptProps.png'),dpi=90)
+fig.savefig(os.path.join(OPT_PROP_OUTPATH,'OptProps_updated.png'),dpi=90)
 plt.show()
 
 #%% Run Slab Model

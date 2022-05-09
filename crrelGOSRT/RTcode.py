@@ -529,11 +529,7 @@ def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000,AirOnly=False):
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
 
-    if AirOnly == False:
-        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castFirst(pSource, pTarget,
-                                                                                obbTree, normalsMesh)
-    else:
-        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
+    intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
                                                                                 obbTree, normalsMesh,inside=False)
 
     if isHit ==True:
@@ -543,6 +539,9 @@ def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000,AirOnly=False):
 
         pathLength = ptsDistance(pSource, intersectionPt)
         dot=np.dot(v_i, v_n)
+
+        if AirOnly == True and dot > 0:
+            pathLength,dot=np.nan,np.nan
     else:
         pathLength,dot=np.nan,np.nan
 
