@@ -5,17 +5,14 @@ Created on Fri Sep  3 16:04:42 2021
 @author: RDCRLJTP
 """
 import sys
-sys.path.append(CODE_PATH)
+from crrelGOSRT import file_pathnames as fpath
+sys.path.append(fpath.CODE_PATH)
 from crrelGOSRT import ImageSeg
 from crrelGOSRT import Utilities as util
 from crrelGOSRT import PhotonTrack
-import glob
 import os
 from matplotlib import pyplot as plt
 import numpy as np
-from math import sin, cos, radians
-import pyvista as pv
-import matplotlib.pyplot as plt
 
 
 def GetZenith(time,latitude,longitude,elevation,timeformat='%Y-%m-%d_%H:%M:%S'):
@@ -77,7 +74,7 @@ Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
 #%% MicroCT Data Processing
 # Find directory with microCT binary images
-MCT_PATH = util.directory_find(MCT_IMAGE_PATH,'Snow')
+MCT_PATH = util.directory_find(fpath.MCT_IMAGE_PATH,'Snow')
 
 # Set data parameters for sub-sampling and mesh generation
 XYstart = 8.0 # The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
@@ -93,13 +90,13 @@ fullMeshName='CRREL_MESH.vtk' ## Name of FULL Mesh .VTK file. (i.e., mesh create
 
 
 # Read MicroCT data
-SNOW, grid = ImageSeg.ImagesToArray(MCT_PATH,VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes)
+SNOW, grid = ImageSeg.ImagesToArray(fpath.MCT_PATH,fpath.VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes)
 
 # Perform grain segmentation
-grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,VTK_DATA_OUTPATH)
+grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,fpath.VTK_DATA_OUTPATH)
 
 # Generate mesh
-ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,minpoints,decimate,VTK_DATA_OUTPATH,fullMeshName,check=False)
+ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,minpoints,decimate,fpath.VTK_DATA_OUTPATH,fullMeshName,check=False)
 
 #%% Run photon-tracking model to get sample optical properties
 
@@ -113,17 +110,17 @@ OutputFile = 'Optical_Properties_updated2.txt'
 fullMeshName='SphereMesh_025mm_8mm3.vtk'
 
 # File definitions (shouldn't have to change)
-VTKFilename = os.path.join(VTK_DATA_OUTPATH,fullMeshName)
-GrainPath = os.path.join(VTK_DATA_OUTPATH,'GRAINS','')
-OutputName = os.path.join(OPT_PROP_OUTPATH,OutputFile)
+VTKFilename = os.path.join(fpath.VTK_DATA_OUTPATH,fullMeshName)
+GrainPath = os.path.join(fpath.VTK_DATA_OUTPATH,'GRAINS','')
+OutputName = os.path.join(fpath.OPT_PROP_OUTPATH,OutputFile)
 
 # Compute optical properties
-fig=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainPath,OutputName,MATERIAL_PATH,wavelen,VoxelRes,
+fig=PhotonTrack.RayTracing_OpticalProperties(fpath.VTKFilename,GrainPath,OutputName,fpath.MATERIAL_PATH,wavelen,VoxelRes,
                                          verbose=True,nPhotons=3500,Multi=False,GrainSamples=30,Advanced=True,
                                          FiceFromDensity=False,straight=False,maxBounce=120,particlePhase=False)
 
 # Save figure
-fig.savefig(os.path.join(OPT_PROP_OUTPATH,'OptProps_updated.png'),dpi=90)
+fig.savefig(os.path.join(fpath.OPT_PROP_OUTPATH,'OptProps_updated.png'),dpi=90)
 plt.show()
 
 #%% Run Slab Model
