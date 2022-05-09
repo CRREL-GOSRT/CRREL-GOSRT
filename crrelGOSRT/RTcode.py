@@ -596,7 +596,7 @@ def TracktoAbsStraight(pSource,pDir,nIce,normalsMesh,obbTree,
 
 
 def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
-        nAir=1.00003,raylen=1000,polar=0,maxBounce=100):
+        nAir=1.00003,raylen=1000,polar=0,maxBounce=100,computeB=False):
     """
     This function is essentially the Kaempfer model only without absorption.  In essence, this function initializes
     a photon with a location/direction and tracks it within the mesh until it exits the mesh or undergoes more bounces than max bounce.
@@ -621,7 +621,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
     """
 
     inSnow = True ## yes, we are in the space.
-    ice = True #No we are not in Ice to start.
+    ice = False #No we are not in Ice to start.
 
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
@@ -636,8 +636,21 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
 
     weights=[]
     COSPHIS=[]
+
+    if computeB == True:
+        ## Quick get F_ice for strange launch!
+        distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+        TotalLength=np.sum(distances)
+
+        if isHit ==True:
+            TotalLength=np.sum(distances)
+            TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
+            Fice_Straight=TotalIceLength/TotalLength
+        else:
+            Fice_Straight=0.0
+
     while inSnow:
-        if TIRbounce > 10: ## This takes care of total internal reflection bounce criteria
+        if TIRbounce > 45: ## This takes care of total internal reflection bounce criteria
             inSnow=False
             ## You've done the max number of bounces allowed, leave!
             break
@@ -703,7 +716,14 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
             inSnow = False
             break
 
-    return TotalIceLength,TotalLength,intersections,weights,COSPHIS
+        Fice_Convoluted = TotalIceLength/TotalLength
+
+        if computeB == True:
+            Bparam=Fice_Convoluted/Fice_Straight
+        else:
+            Bparam=-9999
+
+    return TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fice_Straight
 
 
 def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
