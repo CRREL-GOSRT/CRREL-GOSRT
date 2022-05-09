@@ -6,6 +6,68 @@ import sys
    Some functions here are a little old, but all of them support the photon tracking algorithms by performing vector operations and working with
    3D meshes."""
 
+def addLine(renderer, p1, p2, color=[0.0, 0.0, 1.0], lineWidth=4.0):
+    """
+        Draws a point on an existing renderer connecting p1 and p2
+
+        Inputs:
+            - renderer (vtk renderer object)
+            - p1 (tuple vector) coordinates of point1
+            - p2 (tuple vector) coordinates of point2 - connected point
+
+            - color (optional : 3D vector) RGB color values of point
+            - lineWidth (optional : float) width of line
+
+        Returns:
+            None
+    """
+    line = vtk.vtkLineSource()
+    line.SetPoint1(p1)
+    line.SetPoint2(p2)
+
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputConnection(line.GetOutputPort())
+
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.GetProperty().SetColor(color)
+    actor.GetProperty().SetLineWidth(lineWidth)
+
+    renderer.AddActor(actor)
+
+
+def addPoint(renderer, p, radius=1.0, color=[0.0, 0.0, 0.0], opacity=1.0):
+    """
+        Draws a point on an existing renderer
+
+        Inputs:
+            - renderer (vtk renderer object)
+            - p (tuple vector) coordinates of point
+
+            - radius (optional : float) size of point
+            - color (optional : 3D vector) RGB color values of point
+            - opacity (optional :float 0-1) opacity of point object.
+
+        Returns:
+            None
+    """
+    point = vtk.vtkSphereSource()
+    point.SetCenter(p)
+    point.SetRadius(radius)
+    point.SetPhiResolution(100)
+    point.SetThetaResolution(100)
+
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputConnection(point.GetOutputPort())
+
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.GetProperty().SetColor(color)
+    actor.GetProperty().SetOpacity(opacity)
+
+    renderer.AddActor(actor)
+
+
 def HenYey(PHI,g=0.847):
     """Henyey-Greenstein Phase function approximation"""
     COSPHI=np.cos(PHI)
@@ -287,16 +349,12 @@ def castRayAll(pSource,pTarget,obbTree,normalsMesh):
         cellIdIntersection = []
         normalMeshIntersection = []
     else:
+        p1=pSource[:]
         isHit = True
         pointsIntersectionData = pointsIntersection.GetData()
         v_i = pts2unitVec(pSource, pTarget).squeeze()
 
         for idx in range(numIntersections):
-
-            if idx == 0:
-                p1=pSource[:]
-            else:
-                p1=intersectionPt[:]
 
             v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
             intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
@@ -306,6 +364,8 @@ def castRayAll(pSource,pTarget,obbTree,normalsMesh):
 
             distances.append(ptsDistance(p1,intersectionPt))
             normals.append(np.dot(v_i,v_n))
+
+            p1=intersectionPt[:]
 
     return np.array(distances),np.array(normals), isHit
 
@@ -351,7 +411,7 @@ def castFirst(pSource,pTarget,obbTree,normalsMesh):
         pointsIntersectionData = pointsIntersection.GetData()
         for idx in np.arange(pointsIntersection.GetNumberOfPoints()):
             intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
-            if ptsDistance(intersectionPt,pSource) > 0.0001:
+            if ptsDistance(intersectionPt,pSource) > 0.001:
                 isHit = True
                 v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
                 cellIdIntersection = cellIds.GetId(idx)
@@ -529,12 +589,8 @@ def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000,AirOnly=False):
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
 
-    if AirOnly == False:
-        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castFirst(pSource, pTarget,
+    intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castFirst(pSource, pTarget,
                                                                                 obbTree, normalsMesh)
-    else:
-        intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
-                                                                                obbTree, normalsMesh,inside=False)
 
     if isHit ==True:
         # Incident ray and surface normal vectors
@@ -543,6 +599,52 @@ def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000,AirOnly=False):
 
         pathLength = ptsDistance(pSource, intersectionPt)
         dot=np.dot(v_i, v_n)
+
+        if pathLength <= CRRELPolyData.Resolution:
+            pathLength,dot=np.nan,np.nan
+            return pathLength,dot
+
+        if AirOnly == True and dot > 0:
+            pathLength,dot=np.nan,np.nan
+        # else:
+        #     # Set up rendering object
+        #     renderer = vtk.vtkRenderer()
+        #     renderer.SetBackground(0, 0, 0) # Background color black
+        #
+        #     # Add actors and render
+        #     # Create a mapper and actor for mesh dataset
+        #     mapper = vtk.vtkPolyDataMapper()
+        #     mapper.SetInputData(CRRELPolyData.GetPolyData())
+        #
+        #     actor = vtk.vtkActor()
+        #     actor.SetMapper(mapper)
+        #     actor.GetProperty().SetOpacity(0.8)
+        #     renderer.AddActor(actor)
+        #
+        #
+        #     camera = vtk.vtkCamera()
+        #
+        #     renderer.SetActiveCamera(camera)
+        #
+        #     # Render
+        #     renderWindow = vtk.vtkRenderWindow()
+        #     renderWindow.AddRenderer(renderer)
+        #     renderWindow.SetSize(800, 800)
+        #     renderWindow.Render()
+        #
+        #     renderWindowInteractor = vtk.vtkRenderWindowInteractor()
+        #     renderWindowInteractor.SetRenderWindow(renderWindow)
+        #
+        #     addLine(renderer, pSource, intersectionPt)
+        #     addPoint(renderer,pSource,color=[0.0,1.0,0.0],radius = 0.07)
+        #     #addPoint(renderer,intersectionPt,color=[1.0,1.0,0.0],radius = 0.07)
+        #
+        #     print(pathLength,dot)
+        #
+        #     renderWindowInteractor.Initialize()
+        #     renderWindowInteractor.Start()
+        #
+        #     sys.exit()
     else:
         pathLength,dot=np.nan,np.nan
 
@@ -580,24 +682,27 @@ def TracktoAbsStraight(pSource,pDir,nIce,normalsMesh,obbTree,
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
 
-    intersections = np.reshape(np.array(pSource), (1,3))
+    #intersections = np.reshape(np.array(pSource), (1,3))
 
     TotalIceLength=0
     TotalLength=0
+    Hice=[0]
+    Hgaps=[0]
 
     distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
-
-    TotalLength=np.sum(distances)
 
     if isHit ==True:
         TotalLength=np.sum(distances)
         TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
 
-    return TotalIceLength,TotalLength
+        Hgaps=list(np.ma.masked_where(normals>0,distances).compressed())
+        Hice=list(np.ma.masked_where(normals<=0,distances).compressed())
+
+    return TotalIceLength,TotalLength,Hgaps, Hice
 
 
-def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
-        nAir=1.00003,raylen=1000,polar=0,maxBounce=100):
+def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
+        nAir=1.00003,raylen=1000,polar=0,maxBounce=100,computeB=False):
     """
     This function is essentially the Kaempfer model only without absorption.  In essence, this function initializes
     a photon with a location/direction and tracks it within the mesh until it exits the mesh or undergoes more bounces than max bounce.
@@ -622,7 +727,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
     """
 
     inSnow = True ## yes, we are in the space.
-    ice = True #No we are not in Ice to start.
+    ice = False #No we are not in Ice to start.
 
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
@@ -635,16 +740,32 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
     TIRbounce=0
     first=True
 
-    NumInternalReflect=0
-    NumExternalReflect=0
-
     weights=[]
     COSPHIS=[]
+
+    if computeB == True:
+        ## Quick get F_ice for straight launch!
+        distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+        TotalLength=np.sum(distances)
+
+        if isHit ==True:
+            TotalLength=np.sum(distances)
+            TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
+            Fice_Straight=TotalIceLength/TotalLength
+        else:
+            Fice_Straight=0.0
+
+    TotalIceLength=0
+    TotalLength=0
     while inSnow:
-        if TIRbounce > 15: ## This takes care of total internal reflection bounce criteria
-            inSnow=False
+        #if TIRbounce > 35: ## This takes care of total internal reflection bounce criteria
+            #inSnow=False
+            #TotalLength+=((-np.log(0.8)/kIce)-TotalIceLength)
+            #TotalIceLength+=((-np.log(0.8)/kIce)-TotalIceLength)
+
             ## You've done the max number of bounces allowed, leave!
-            break
+        #    pass
+            #break
         if bounce > maxBounce: ## This takes care of total internal reflection bounce criteria
             inSnow=False
             ## You've done the max number of bounces allowed, leave!
@@ -657,6 +778,8 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
             # Incident ray and surface normal vectors
             v_i = pts2unitVec(pSource, pTarget).squeeze()
             v_n = np.array(normalMeshIntersection).squeeze()
+            dist=ptsDistance(pSource, intersectionPt)
+            TotalLength+=dist
             # Check to see if ray if incident ray is inside or outside of dense material
             # Assign indices of refraction values
             if first == True:
@@ -669,7 +792,6 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if reflected:
                     ice = False
-                    NumExternalReflect+=1
                 else:
                     ice = True
 
@@ -682,11 +804,16 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if reflected:
                     ice = True
-                    NumInternalReflect+=1
                 else:
                     ice = False
 
-                TotalIceLength+=ptsDistance(pSource, intersectionPt)
+
+                TotalIceLength+=dist
+
+                POA=1.-np.exp(-kIce*dist)
+                rand=np.random.uniform(0,1)
+                if rand <= POA: #PHOTON = DEAD!
+                    break
 
             ## GET PHASE FUNCTION FOR RELFECTION / TRANSMISSION! ##
             v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
@@ -698,7 +825,6 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
             weights.append(transmiss)
 
             ## Get Reflected/Transmitted Weights Amount ##
-            TotalLength+=ptsDistance(pSource, intersectionPt)
             pSource = np.array(intersectionPt) + 1e-3 * v_i_new
             pTarget = np.array(intersectionPt) + raylen * v_i_new
             # If there are no intersection points, then the particle is gone!
@@ -706,10 +832,21 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,normalsMesh,obbTree,
             intersections = np.vstack((intersections, np.reshape(intersectionPt, (1,3))))
             bounce+=1 ## Add to bounce count!
         else:
+
+            #if ice == False:
+                ## simple adjustment to account for distance between ice edge and outer boundary?
+            #    TotalLength+=np.nanmean(np.ma.masked_where(normals>0,distances).compressed())
             inSnow = False
             break
 
-    return TotalIceLength,TotalLength,intersections,weights,COSPHIS,NumInternalReflect,NumExternalReflect
+        Fice_Convoluted = TotalIceLength/TotalLength
+
+        if computeB == True:
+            Bparam=Fice_Convoluted/Fice_Straight
+        else:
+            Bparam=-9999
+
+    return TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fice_Straight
 
 
 def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
@@ -750,11 +887,25 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
     bounce=0
     TIRbounce=0
     first=True
-    NumInternalReflect=0
-    NumExternalReflect=0
+
+    computeB = True
+    Bparam=-9999
+    if computeB == True:
+        ## Quick get F_ice for strange launch!
+        distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+        TotalLength=np.sum(distances)
+
+        if isHit ==True:
+            TotalLength=np.sum(distances)
+            TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
+            Fice_Straight=TotalIceLength/TotalLength
+        else:
+            Fice_Straight=0.0
+
     while inSnow:
-        if TIRbounce > 15: ## This takes care of total internal reflection bounce criteria
+        if TIRbounce > 35: ## This takes care of total internal reflection bounce criteria
             inSnow=False
+
             ## You've done the max number of bounces allowed, leave!
             break
         if bounce > maxBounce: ## This takes care of total internal reflection bounce criteria
@@ -781,7 +932,6 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if reflected:
                     ice = False
-                    NumExternalReflect +=1
                 else:
                     ice = True
 
@@ -794,7 +944,6 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if reflected:
                     ice = True
-                    NumInternalReflect+=1
                 else:
                     ice = False
 
@@ -812,7 +961,13 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             inSnow = False
             break
 
-    return TotalIceLength,TotalLength,intersections,NumInternalReflect,NumExternalReflect
+        Fice_Convoluted = TotalIceLength/TotalLength
+        if computeB == True:
+            Bparam=Fice_Convoluted/Fice_Straight
+        else:
+            Bparam=-9999
+
+    return TotalIceLength,TotalLength,intersections,Bparam
 
 
 def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',
@@ -929,6 +1084,8 @@ def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce
 
                 if np.sum(weights) >= converg-absorbed:
                     ## You're close enough, exit the loop!
+                    remainder=1.-np.sum(weights)-absorbed
+                    absorbed+=remainder
                     break
 
     ScatAlb=1.-absorbed/(np.sum(weights)+absorbed)

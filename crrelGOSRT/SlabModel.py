@@ -1007,6 +1007,8 @@ class SlabModel:
             DiffusePhotons = int(nPhotons*self.__DiffuseFraction)
             DirectPhotons = nPhotons-DiffusePhotons
 
+            TotalPathLength=np.zeros_like(Photons)
+
             randAzi=np.random.uniform(0.0,2.*np.pi,size=DiffusePhotons)
             randZen=np.random.uniform(0.0,np.pi/2.,size=DiffusePhotons)
             diffuse=[[np.sin(randZen[j])*np.cos(randAzi[j]),np.sin(randZen[j])*np.sin(randAzi[j]),-np.cos(randZen[j])] for j in range(DiffusePhotons)]
@@ -1019,6 +1021,7 @@ class SlabModel:
             albedo=0.0
             transmiss=0.0
             iterNum=1
+            TotalPathVals=[]
             while(len(Photons) > 0):
                 Photons,abso=self.__RussianRoulette(Photons)
                 absorbed+=abso
@@ -1027,10 +1030,13 @@ class SlabModel:
                 rand=np.random.uniform(0.0,1.,size=len(Photons))
                 rand=np.array(3*[rand])
                 s=-np.log(rand)/extCoeff ## Distance!
+
+                TotalPathLength[:]+=s[0,:]
                 u1=u0+cosU*s ## New position!
 
                 ## Where photons have gone out of the top of the snowpack!
                 OutTop=np.ma.masked_where(u1[2,:] < self.__slabDepth, Photons)
+                TotalPathVals+=list(TotalPathLength[np.where(u1[2,:] >= self.__slabDepth)])
                 albedo+=np.sum(np.ma.masked_less(OutTop.compressed(),0).compressed()) ## Add all to albedo.
 
                 ## See comments on surface section in the RunBRDF function.
@@ -1087,10 +1093,12 @@ class SlabModel:
                         cosU[:,SfcIdx] = OutDir[:]
 
                 OutBottom=np.ma.masked_where(u1[2,:] >=0, Photons) ## out of the bottom
+                TotalPathVals+=list(TotalPathLength[np.where(u1[2,:] < 0)])
                 keepIdx=np.squeeze([(u1[2,:] >= 0) & (u1[2,:] < self.__slabDepth) & (Photons >= 0)]) ## Which photons to keep!
                 transmiss+=np.sum(np.ma.masked_less(OutBottom.compressed(),0).compressed()) ## Add all to transmiss
                 ## update all necessary arrays to keep only indexes that you need! ##
 
+                TotalPathLength=TotalPathLength[keepIdx]
                 u1=u1[:,keepIdx]
                 u0=u0[:,keepIdx]
                 Photons=Photons[keepIdx]

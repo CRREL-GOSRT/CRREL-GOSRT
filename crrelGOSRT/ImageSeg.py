@@ -52,7 +52,7 @@ from pathlib import Path
 
 
 
-def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,savePropsToCsv=True,saveMeshParams=True):
+def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,savePropsToCsv=True,saveMeshParams=True,imgsfx='png'):
 
     """
     This function reads in a microCT binarized image stack and generates arrays necessary for grain segmentation and mesh generation
@@ -113,7 +113,7 @@ def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,s
         data=pd.read_csv(textfile,header=41)
 
     # Read in full stack of plane view images
-    pngfiles=sorted(glob.glob(os.path.join(path,'*.png')))
+    pngfiles=sorted(glob.glob(os.path.join(path,'*.%s'%imgsfx)))
 
     # Calculate and define depths
     Z=[]
@@ -124,8 +124,12 @@ def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,s
             datamatch=data[data['File name'] == bmpmatch]
             depth=float(datamatch['Z position'][:])
         else:
-            depthNum =float(png.split('.png')[0].split('_')[-1])
-            depth = depthNum*voxelRes
+            try:
+                depthNum =float(png.split('.%s'%imgsfx)[0].split('_')[-1])
+                depth = depthNum*voxelRes
+            except:
+                print("WARNING --- %s does not match the correct image format!"%os.path.basename(png))
+                print("Skipping this file!")
 
         # pull just PNGs associated with the subsample
         if Zrange[0] <= depthTop-depth <= Zrange[1]:
@@ -459,7 +463,7 @@ def MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,
             polyShell=CRRELPolyData._CRRELPolyData(mesh,xBounds,yBounds,zBounds,voxelRes,100.,description='REAL Snow Mesh')
 
             if create_individual == True:
-                print(outpath / 'Grain_{}.vtk'.format(grain))
+                print(outpath + 'Grain_{}.vtk'.format(grain))
                 polyShell.WritePolyDataToVtk(os.path.join(outpath, 'Grain_{}.vtk'.format(grain)))  # write VTK file for individual grain
             newPoly=False
         else:

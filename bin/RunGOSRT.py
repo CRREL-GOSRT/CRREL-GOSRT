@@ -5,7 +5,6 @@ Created on Fri Sep  3 16:04:42 2021
 @author: RDCRLJTP
 """
 import sys
-sys.path.append(CODE_PATH)
 from crrelGOSRT import ImageSeg
 from crrelGOSRT import Utilities as util
 from crrelGOSRT import PhotonTrack
@@ -74,26 +73,27 @@ TimeFormat='%m-%d %H:%M'
 
 Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
-
+MCT_IMAGE_PATH='/Users/rdcrltwl/Desktop/UVD_microCT/CRREL_Mar22/compacted_top_Rec/VOI'
+VTK_DATA_OUTPATH='/Users/rdcrltwl/Desktop/UVD_microCT/CRREL_Mar22/compacted_top_Rec/FULL'
 #%% MicroCT Data Processing
 # Find directory with microCT binary images
-MCT_PATH = Utilities.directory_find(MCT_IMAGE_PATH,'Snow')
+#MCT_PATH = Utilities.directory_find(MCT_IMAGE_PATH,'VOI')
 
 # Set data parameters for sub-sampling and mesh generation
-XYstart = 8.0 # The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
+XYstart = 3.0 # The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
 XYend = 12.0 # The ending point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
-depthTop = 300 # Top snow depth of scanned sample (in mm)
-Ztop = 295.0  # Top depth selected for mesh sample subset
+depthTop = 80 # Top snow depth of scanned sample (in mm)
+Ztop = 78  # Top depth selected for mesh sample subset
 allowedBorder = 10000000  # Number of points allowed to be on a mesh border
 minpoints = 25  # Minimum number of points allowed for each grain
-minGrainSize = 0.4 # This sets the minimum grainsize (in mm) for the peak-local-max function
+minGrainSize = 0.6 # This sets the minimum grainsize (in mm) for the peak-local-max function
 voxelRes=19.88250/1000. ## in millimeters, given in microCT log file
 decimate = 0.9 # The decimal percentage of mesh triangles to eliminate
 fullMeshName='CRREL_MESH.vtk' ## Name of FULL Mesh .VTK file. (i.e., mesh created by aggregating all the grains)
 
 
 # Read MicroCT data
-SNOW, grid = ImageSeg.ImagesToArray(MCT_PATH,VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes)
+SNOW, grid = ImageSeg.ImagesToArray(MCT_IMAGE_PATH,VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes,imgsfx='bmp')
 
 # Perform grain segmentation
 grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,VTK_DATA_OUTPATH)
@@ -101,6 +101,8 @@ grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,
 # Generate mesh
 ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,minpoints,decimate,VTK_DATA_OUTPATH,fullMeshName,check=False)
 
+
+sys.exit()
 #%% Run photon-tracking model to get sample optical properties
 
 # Define voxel resolution and wavelength of light used in computing optical properties
