@@ -702,7 +702,7 @@ def TracktoAbsStraight(pSource,pDir,nIce,normalsMesh,obbTree,
 
 
 def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
-        nAir=1.00003,raylen=1000,polar=0,maxBounce=100,computeB=False):
+        nAir=1.00003,raylen=1000,polar=0,maxBounce=100,particle=True):
     """
     This function is essentially the Kaempfer model only without absorption.  In essence, this function initializes
     a photon with a location/direction and tracks it within the mesh until it exits the mesh or undergoes more bounces than max bounce.
@@ -718,7 +718,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
         raylen - (float: optional) how far to cast ray in search of intersections (mm)
         polar - (float: optional / developmental) flag that allows for the ray to be either horizontally or vertically polarized
         maxBounce - (int: optional) cuts of photon tracking after this number of bounces.  Can significantly reduce computational expense
-
+        particle - (bool: optional) Computes phase function by comparing scattering angles when air/ice phase are different
 
     Returns:
         TotalIceLength - (float) total distance (mm) traveled within the ice
@@ -743,17 +743,20 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
     weights=[]
     COSPHIS=[]
 
-    if computeB == True:
-        ## Quick get F_ice for straight launch!
-        distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
-        TotalLength=np.sum(distances)
+    distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+    TotalLength=np.sum(distances)
 
-        if isHit ==True:
-            TotalLength=np.sum(distances)
-            TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
-            Fice_Straight=TotalIceLength/TotalLength
-        else:
-            Fice_Straight=0.0
+    if particle == True:
+        incidentParticle=pts2unitVec(pSource, pTarget).squeeze()
+        PhaseWeight=1.0 ## Initial phase weight
+
+
+    if isHit ==True:
+        TotalLength=np.sum(distances)
+        TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
+        Fice_Straight=TotalIceLength/TotalLength
+    else:
+        Fice_Straight=0.0
 
     TotalIceLength=0
     TotalLength=0
@@ -784,17 +787,28 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
             # Assign indices of refraction values
             if first == True:
                 first = False
+
             if np.dot(v_i, v_n) < 0: ## you are in AIR!
+                ### IF COMPUTING "particle" SCATTERING -> then THIS IS THE INCIDENT ANGLE! ##
+                if particle == True:
+                    incidentParticle = v_i ## incidentParticle is the incident ray on the particle surface!
+                    PhaseWeight=1.0 ## New phase weight!
                 # Assign indices of refraction values
                 n1 = nAir
                 n2 = nIce
                 # Is ray transmitted or reflected?
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                if particle == True:
+                    ## add to reflected weight! ##
+                    v_i_ref, v_i_tran, reflect_init,transmiss_init = Fresnel(n1, n2, v_i, v_n,polar=polar)
+                    COSPHI=np.dot(incidentParticle,v_i_ref)
+                    COSPHIS.append(COSPHI)
+                    weights.append(reflect_init*PhaseWeight)
+                    PhaseWeight=PhaseWeight*(1. - reflect_init)
                 if reflected:
                     ice = False
                 else:
                     ice = True
-
             else: ## You are in ice!
                 # Assign indices of refraction values
                 n1 = nIce
@@ -802,11 +816,18 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                 v_n=-v_n
                 # If photon is not absorbed, is photon reflected?
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                if particle == True:
+                    v_i_ref, v_i_tran, reflect_init,transmiss_init = Fresnel(n1, n2, v_i, v_n,polar=polar)
+                    COSPHI=np.dot(incidentParticle,v_i_tran)
+                    COSPHIS.append(COSPHI)
+                    weights.append(transmiss_init*PhaseWeight)
+                    PhaseWeight = PhaseWeight * (1. - transmiss_init)  #energy left is whatever is relfected!
                 if reflected:
                     ice = True
                 else:
                     ice = False
-
+                    ## IF you are computing phase function as a particle, AND You are starting in ice, the
+                    ## scattered angle is THEN the scattered angle transmitting out of the
 
                 TotalIceLength+=dist
 
@@ -816,13 +837,14 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                     break
 
             ## GET PHASE FUNCTION FOR RELFECTION / TRANSMISSION! ##
-            v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
-            COSPHI=np.dot(v_i,v_i_ref)
-            weights.append(reflect)
-            COSPHIS.append(COSPHI)
-            COSPHI=np.dot(v_i,v_i_tran)
-            COSPHIS.append(COSPHI)
-            weights.append(transmiss)
+            if particle == False:
+                v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
+                COSPHI=np.dot(v_i,v_i_ref)
+                weights.append(reflect)
+                COSPHIS.append(COSPHI)
+                COSPHI=np.dot(v_i,v_i_tran)
+                COSPHIS.append(COSPHI)
+                weights.append(transmiss)
 
             ## Get Reflected/Transmitted Weights Amount ##
             pSource = np.array(intersectionPt) + 1e-3 * v_i_new
@@ -840,11 +862,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
             break
 
         Fice_Convoluted = TotalIceLength/TotalLength
-
-        if computeB == True:
-            Bparam=Fice_Convoluted/Fice_Straight
-        else:
-            Bparam=-9999
+        Bparam=Fice_Convoluted/Fice_Straight
 
     return TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fice_Straight
 

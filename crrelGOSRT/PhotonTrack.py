@@ -192,6 +192,8 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
             Fice,TotalLengths,missed,POWER,thetas,Bparams=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
                                                   straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase)
 
+            bins=np.linspace(0,np.pi,PhaseBins)
+            dtheta=np.abs(bins[1]-bins[0])
             asymmparam = 0.5*dtheta*np.sum(np.cos(thetas)*np.sin(thetas)*POWER)
 
     else:
@@ -391,7 +393,7 @@ def ConvertVoxel2mm(resolution,units='um'):
 
 
 def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbose=False,straight=False,
-                PhaseBins=180,particlePhase=False,computeB=True):
+                PhaseBins=180,particlePhase=False):
     """Computes the F_{ice} optical property by running a customized version of the
        explicit photon tracking model described in Kaempfer et al., 2007.
 
@@ -437,7 +439,6 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
     Fice_Straight=[]
     TotalLengths=[]
     missed=0
-    Bparams=[]
 
     A=[]
     H=[]
@@ -500,7 +501,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
                 POWER=np.zeros_like(binCenters)
 
             TotalIceLength,TotalLength,intersections,weights,COSPHIS,Bparam=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,kIce,normalsMesh,obbTree,
-                    nAir=1.00003,raylen=1000,polar=Polar,maxBounce=maxBounce,computeB=computeB)
+                    nAir=1.00003,raylen=1000,polar=Polar,maxBounce=maxBounce)
 
 
             for cdx,c in enumerate(COSPHIS):
@@ -522,10 +523,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
         Fice_Straight.append(Bparam)
         TotalLengths.append(TotalLength)
 
-        Bparams.append(Bparam)
-
     if particlePhase == True:
-
 
         if straight == True:
             A=np.ma.masked_less_equal(A,SnowMesh.Resolution).compressed()
