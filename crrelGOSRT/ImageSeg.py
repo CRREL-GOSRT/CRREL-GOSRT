@@ -130,6 +130,7 @@ def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,s
             except:
                 print("WARNING --- %s does not match the correct image format!"%os.path.basename(png))
                 print("Skipping this file!")
+                continue
 
         # pull just PNGs associated with the subsample
         if Zrange[0] <= depthTop-depth <= Zrange[1]:
@@ -463,7 +464,7 @@ def MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,
             polyShell=CRRELPolyData._CRRELPolyData(mesh,xBounds,yBounds,zBounds,voxelRes,100.,description='REAL Snow Mesh')
 
             if create_individual == True:
-                print(outpath + 'Grain_{}.vtk'.format(grain))
+                print(outpath / 'Grain_{}.vtk'.format(grain))
                 polyShell.WritePolyDataToVtk(os.path.join(outpath, 'Grain_{}.vtk'.format(grain)))  # write VTK file for individual grain
             newPoly=False
         else:
