@@ -5,14 +5,17 @@ Created on Fri Sep  3 16:04:42 2021
 @author: RDCRLJTP
 """
 import sys
-from crrelGOSRT import file_pathnames as fpath
-sys.path.append(fpath.CODE_PATH)
 from crrelGOSRT import ImageSeg
 from crrelGOSRT import Utilities as util
 from crrelGOSRT import PhotonTrack
 import os
 from matplotlib import pyplot as plt
 import numpy as np
+from math import sin, cos, radians
+import pyvista as pv
+import matplotlib.pyplot as plt
+import file_pathnames as fp
+
 
 
 def GetZenith(time,latitude,longitude,elevation,timeformat='%Y-%m-%d_%H:%M:%S'):
@@ -71,33 +74,36 @@ TimeFormat='%m-%d %H:%M'
 
 Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
-
 #%% MicroCT Data Processing
 # Find directory with microCT binary images
-MCT_PATH = util.directory_find(fpath.MCT_IMAGE_PATH,'Snow')
+MCT_PATH = util.directory_find(fp.MCT_IMAGE_PATH,'Snow')
+
 
 # Set data parameters for sub-sampling and mesh generation
-XYstart = 8.0 # The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
-XYend = 12.0 # The ending point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
-depthTop = 300 # Top snow depth of scanned sample (in mm)
-Ztop = 295.0  # Top depth selected for mesh sample subset
+XYstart = 5.0 # The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
+XYend = 10.0 # The ending point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
+depthTop = 320 # Top snow depth of scanned sample (in mm)
+Ztop = 315  # Top depth selected for mesh sample subset
 allowedBorder = 10000000  # Number of points allowed to be on a mesh border
 minpoints = 25  # Minimum number of points allowed for each grain
-minGrainSize = 0.4 # This sets the minimum grainsize (in mm) for the peak-local-max function
+minGrainSize = 0.3 # This sets the minimum grainsize (in mm) for the peak-local-max function
 voxelRes=19.88250/1000. ## in millimeters, given in microCT log file
 decimate = 0.9 # The decimal percentage of mesh triangles to eliminate
 fullMeshName='CRREL_MESH.vtk' ## Name of FULL Mesh .VTK file. (i.e., mesh created by aggregating all the grains)
 
 
 # Read MicroCT data
-SNOW, grid = ImageSeg.ImagesToArray(fpath.MCT_PATH,fpath.VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes)
+SNOW, grid = ImageSeg.ImagesToArray(fp.MCT_IMAGE_PATH,fp.VTK_DATA_OUTPATH,XYstart,XYend,depthTop,Ztop,voxelRes)
 
 # Perform grain segmentation
-grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,fpath.VTK_DATA_OUTPATH)
+grains, grain_labels, properties = ImageSeg.GrainSeg(SNOW,voxelRes,minGrainSize,fp.VTK_DATA_OUTPATH)
 
 # Generate mesh
-ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,minpoints,decimate,fpath.VTK_DATA_OUTPATH,fullMeshName,check=False)
+ImageSeg.MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,minpoints,decimate,fp.VTK_DATA_OUTPATH,fullMeshName,check=False)
 
+
+
+sys.exit()
 #%% Run photon-tracking model to get sample optical properties
 
 # Define voxel resolution and wavelength of light used in computing optical properties
@@ -110,17 +116,17 @@ OutputFile = 'Optical_Properties_updated2.txt'
 fullMeshName='SphereMesh_025mm_8mm3.vtk'
 
 # File definitions (shouldn't have to change)
-VTKFilename = os.path.join(fpath.VTK_DATA_OUTPATH,fullMeshName)
-GrainPath = os.path.join(fpath.VTK_DATA_OUTPATH,'GRAINS','')
-OutputName = os.path.join(fpath.OPT_PROP_OUTPATH,OutputFile)
+VTKFilename = os.path.join(fp.VTK_DATA_OUTPATH,fullMeshName)
+GrainPath = os.path.join(fp.VTK_DATA_OUTPATH,'GRAINS','')
+OutputName = os.path.join(fp.OPT_PROP_OUTPATH,OutputFile)
 
 # Compute optical properties
-fig=PhotonTrack.RayTracing_OpticalProperties(fpath.VTKFilename,GrainPath,OutputName,fpath.MATERIAL_PATH,wavelen,VoxelRes,
+fig=PhotonTrack.RayTracing_OpticalProperties(fp.VTKFilename,GrainPath,OutputName,fp.MATERIAL_PATH,wavelen,VoxelRes,
                                          verbose=True,nPhotons=3500,Multi=False,GrainSamples=30,Advanced=True,
                                          FiceFromDensity=False,straight=False,maxBounce=120,particlePhase=False)
 
 # Save figure
-fig.savefig(os.path.join(fpath.OPT_PROP_OUTPATH,'OptProps_updated.png'),dpi=90)
+fig.savefig(os.path.join(fp.OPT_PROP_OUTPATH,'OptProps.png'),dpi=90)
 plt.show()
 
 #%% Run Slab Model

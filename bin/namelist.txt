@@ -2,12 +2,16 @@
 
 ### File Paths and Names ###
 
-MasterPath = /Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Facets/Facets_Props/
+#MasterPath = /Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Facets/Facets_Props/
 MaterialPath = /Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/
-PropFileNames = OpticalProp14_13.txt,
+#PropFileNames = OpticalProp14_13.txt,
+
+MasterPath = /Users/rdcrltwl/Desktop/Circles/Outputs/
+PropFileNames = Compact.txt,
+
 
 ## Snowpack Size and Layer Characteristics
-LayerTops = 500,0
+LayerTops = 60,0
 xSize = 10
 ySize = 10
 
@@ -32,7 +36,7 @@ RussianRouletteWeight = 6
 ## only used when calling GetZenith()
 Latitude = 43.8163
 Longitude = -72.2740
-Time = 02-12 14:35
+Time = 03-12 14:35
 Elevation = 553
 
 ## Fraction of Diffuse Radiation.
