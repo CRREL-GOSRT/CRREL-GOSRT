@@ -351,20 +351,20 @@ def castFirst(pSource,pTarget,obbTree,normalsMesh):
         pointsIntersectionData = pointsIntersection.GetData()
         for idx in np.arange(pointsIntersection.GetNumberOfPoints()):
             intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
-            if ptsDistance(intersectionPt,pSource) > 0.001:
+            if ptsDistance(intersectionPt,pSource) > 0.0001:
                 isHit = True
                 v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
                 cellIdIntersection = cellIds.GetId(idx)
                 intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
                 normalMeshIntersection = v_n
 
-                if np.dot(v_i,v_n) > 0 and idx == 0:
-                    continue
+                #if np.dot(v_i,v_n) > 0 and idx == 0:
+                #    continue
 
-                if idx > 3:
-                    ## TOO FAR! ##
-                    isHit = False
-                    break
+            #    if idx > 3:
+            #        ## TOO FAR! ##
+            #        isHit = False
+            #        break
                 break
             else:
                 continue
