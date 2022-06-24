@@ -1,10 +1,8 @@
 ##Polar Phase.py
 ##Checks Phase function properties from Spheres
-from file_pathnames import *
 import sys
-import DrawShapes,CRRELPolyData
-import RenderFunctions
-import RTcode
+import DrawShapes
+from crrelGOSRT import RenderFunctions,CRRELPolyData, RTcode
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy import stats
@@ -35,7 +33,7 @@ def sph2cart(azi,el,r):
 print(1000./(2.*np.pi)*0.550/1000.)
 meanRadius = 1000./(2.*np.pi)*0.550/1000.
 numSpheres=1
-numPhotons=5000 ## per sphere
+numPhotons=100000 ## per sphere
 
 voxelize=False
 
@@ -51,10 +49,10 @@ nBins=180
 VoxelRes=19.88250/1000.
 exportPath=''
 radii=[]
-wavelens=[900]
+wavelens=[1200]
 wavelenUnits='nm'
 
-allowed=['sphere','column','column','grain']
+allowed=['sphere']#,'column','column','grain']
 
 
 fig=plt.figure(figsize=(11,9))
@@ -70,7 +68,9 @@ for wdx,wavelen in enumerate(wavelens):
         k=2.*np.pi/(wavelen * 1E-6)
 
         L=kL/k  # radius of sphere
-    LoA=[6,8,0.1,6] # aspect ratio
+
+
+    LoA=[6,4,0.1,6] # aspect ratio
 
     print(L)
     GrainNum='136'
@@ -83,9 +83,10 @@ for wdx,wavelen in enumerate(wavelens):
             'Rendered Snow Grain from microCT']
 
 
-    GrainsPath=os.path.join(VTK_DATA_OUTPATH,'GRAINS')
+    GrainsPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_1_1redo/Snow/GRAINS/'
 
-    outpath=OPT_PROP_OUTPATH
+    outpath='/Users/rdcrltwl/Desktop/PhaseFunctions/'
+    MaterialPath = '/Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/'
 
     thetas=np.linspace(0,np.pi,nBins)
     dtheta=np.abs(thetas[1]-thetas[0])
@@ -96,8 +97,7 @@ for wdx,wavelen in enumerate(wavelens):
     GrainFiles=glob.glob(GrainsPath+'*%s*.vtk'%GrainNum)
 
     for sdx, shape in enumerate(allowed):
-        print(shape)
-        
+
         PhaseHPol=np.zeros_like(binCenters)
         PhaseVPol=np.zeros_like(binCenters)
         UnPol=np.zeros_like(binCenters)
@@ -136,12 +136,12 @@ for wdx,wavelen in enumerate(wavelens):
             CRRELPD.WritePolyDataToVtk(outpath+shape+'.vtk')
 
         if shape == 'sphere':
-            points,triangles,colors =DrawShapes.MakeSphere(L, center, nTheta, nPhi)
+            points,triangles,colors =DrawShapes.MakeSphere(1.5, center, nTheta, nPhi)
 
             CRRELPD= DrawShapes.CreateCRRELPolyDataFromPoints(points,triangles,colors)
             # print('sphere bounds = ', CRRELPD.xBounds,CRRELPD.yBounds,CRRELPD.zBounds)
-            CRRELPD.WritePolyDataToVtk(outpath+shape+'.vtk')
-
+            CRRELPD.WritePolyDataToVtk(outpath+shape+'_1.5_.vtk')
+            sys.exit()
 
         if shape == 'column':
             if LoA[sdx]> 1:
@@ -154,10 +154,10 @@ for wdx,wavelen in enumerate(wavelens):
             # print('column bounds = ', CRRELPD.xBounds,CRRELPD.yBounds,CRRELPD.zBounds)
             CRRELPD.WritePolyDataToVtk(outpath+shape+"_"+str(LoA[sdx])+'.vtk')
 
-        CRRELPD.AssignMaterial('ice',filePath=MATERIAL_PATH)
-        
+        CRRELPD.AssignMaterial('ice',filePath=MaterialPath)
+
         nIce,kIce,Nc=CRRELPD.GetRefractiveIndex(wavelen,units=wavelenUnits)
-        
+
         normalsMesh=CRRELPD.GetNormalsMesh()
         obbTree=CRRELPD.GetObbTree()
 
@@ -172,7 +172,7 @@ for wdx,wavelen in enumerate(wavelens):
             x2=np.random.uniform(CRRELPD.xBounds[0],CRRELPD.xBounds[1])
             y2=np.random.uniform(CRRELPD.yBounds[0],CRRELPD.yBounds[1])
             z2=np.random.uniform(CRRELPD.zBounds[0],CRRELPD.zBounds[1])
-            
+
             # hxy=np.hypot(CRRELPD.xBounds[1]-CRRELPD.xBounds[0],CRRELPD.yBounds[1]-CRRELPD.yBounds[0])
             # rmax=np.hypot(hxy,CRRELPD.zBounds[1]-CRRELPD.zBounds[0])
 
@@ -212,7 +212,7 @@ for wdx,wavelen in enumerate(wavelens):
 
             p11=[x1,y1,z1]
             p22=[x2,y2,z2]
-            
+
             # p11 = srcPts[ndx,:]
             # p22 = tgtPts[ndx,:]
 
@@ -220,7 +220,7 @@ for wdx,wavelen in enumerate(wavelens):
 
             # polar=complex(0,inter)
 
-            weights,COSPHIS,intersections,dummy=RTcode.ParticlePhaseFunction(CRRELPD,p11,p22,normalsMesh,obbTree,nIce,kIce,absorb=True)
+            weights,COSPHIS,intersections,ScatAlb,dummy=RTcode.ParticlePhaseFunction(CRRELPD,p11,p22,normalsMesh,obbTree,nIce,kIce,absorb=True)
 
 
             if dummy == True:
@@ -255,8 +255,13 @@ for wdx,wavelen in enumerate(wavelens):
 
     #    VPol=4.*np.pi*PhaseVPol[:]/(numSpheres*numPhotons*np.sin(thetas[:])*dtheta)
     #    HPol=4.*np.pi*PhaseHPol[:]/(numSpheres*numPhotons*np.sin(thetas[:])*dtheta)
-    
+
         asymmparam = 0.5*dtheta*np.sum(pf*np.sin(thetaCenters)*np.cos(thetaCenters))
+
+        outputcsv=outpath+shape+str(L)+'_phaseFunc.csv'
+        dict={'Theta':thetaCenters,'phaseFunc':pf}
+        df=pd.DataFrame.from_dict(dict)
+        df.to_csv(outputcsv,index=False)
 
         ax=plt.subplot(2,2,counters[countIdx])
         ax.plot(np.degrees(thetaCenters),pf,label="$\lambda$ = %.2f $\mu$m"%(wavelen/1000.))
