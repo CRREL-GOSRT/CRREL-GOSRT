@@ -405,13 +405,13 @@ def castFirst(pSource,pTarget,obbTree,normalsMesh):
     normalMeshIntersection = []
     isHit = False
     v_i=pts2unitVec(pSource,pTarget)
-    if code == 0 or pointsIntersection.GetNumberOfPoints() < 2: # avoids boundaries.
+    if code == 0 or pointsIntersection.GetNumberOfPoints() < 1: # avoids boundaries.
         isHit = False
     else:
         pointsIntersectionData = pointsIntersection.GetData()
         for idx in np.arange(pointsIntersection.GetNumberOfPoints()):
             intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
-            if ptsDistance(intersectionPt,pSource) > 0.001:
+            if ptsDistance(intersectionPt,pSource) > 0.02:
                 isHit = True
                 v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
                 cellIdIntersection = cellIds.GetId(idx)
