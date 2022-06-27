@@ -121,7 +121,7 @@ GrainPath = os.path.join(fp.VTK_DATA_OUTPATH,'GRAINS','')
 OutputName = os.path.join(fp.OPT_PROP_OUTPATH,OutputFile)
 
 # Compute optical properties
-fig=PhotonTrack.RayTracing_OpticalProperties(fp.VTKFilename,GrainPath,OutputName,fp.MATERIAL_PATH,wavelen,VoxelRes,
+fig=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainPath,OutputName,fp.MATERIAL_PATH,wavelen,VoxelRes,
                                          verbose=True,nPhotons=3500,Multi=False,GrainSamples=30,Advanced=True,
                                          FiceFromDensity=False,straight=False,maxBounce=120,particlePhase=False)
 

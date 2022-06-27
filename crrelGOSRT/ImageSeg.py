@@ -43,7 +43,7 @@ from scipy import signal, ndimage as ndi
 from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
 from skimage.measure import regionprops
-from skimage.measure import marching_cubes_lewiner
+from skimage.measure import marching_cubes
 from skimage.filters import gaussian
 from datetime import datetime, timedelta
 import os
@@ -216,7 +216,7 @@ def GrainSeg(SNOW,voxelRes,minGrainSize,outpath,thresh=0.9,saveMeshParams=True):
 
     # Find peaks (local maxima) in an image, output is a coordinate list, must be separated by at least the min_dist calculated below
     min_dist = int(minGrainSize/voxelRes)
-    local_maxi = peak_local_max(distance_in, min_distance=min_dist, exclude_border=False, indices=False, labels=SNOW_IN)
+    local_maxi = peak_local_max(distance_in, min_distance=min_dist, exclude_border=False, indices=False, labels=SNOW_IN.astype(int))
 
     # mark local maxima and fill "watershed basins" in image
     markers = ndi.label(local_maxi)[0]
@@ -388,69 +388,69 @@ def MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,
             dataDict['Volume (mm^3)'].append(properties[gdx].area*voxelRes**3)
             dataDict['Radius (mm)'].append(properties[gdx].equivalent_diameter/2.0*voxelRes)
 
-            if check == True:
-                x1=np.min(X) + properties[gdx].centroid[0]*voxelRes
-                y1=np.min(Y) + properties[gdx].centroid[1]*voxelRes
-                z1=np.min(Z) + properties[gdx].centroid[2]*voxelRes
-                print(x1,y1,z1)
+        if check == True:
+            x1=np.min(X) + properties[gdx].centroid[0]*voxelRes
+            y1=np.min(Y) + properties[gdx].centroid[1]*voxelRes
+            z1=np.min(Z) + properties[gdx].centroid[2]*voxelRes
+            print(x1,y1,z1)
 
 
-            ## Mesh generation via contour method and Marching Cubes
-            grain_select = (grain_labels==grain)  # boolean array where grain is True, all else is False
+        ## Mesh generation via contour method and Marching Cubes
+        grain_select = (grain_labels==grain)  # boolean array where grain is True, all else is False
 
-            # Extract the subset of the large image that corresponds to this grain, this should help with code speed
-            nz_inds = np.nonzero(grain_select)
-            buffer = 3
-            imin, imax = np.max([0,np.min(nz_inds[0])-buffer]), np.min([grain_select.shape[0],np.max(nz_inds[0])+buffer])
-            jmin, jmax = np.max([0,np.min(nz_inds[1])-buffer]), np.min([grain_select.shape[1],np.max(nz_inds[1])+buffer])
-            kmin, kmax = np.max([0,np.min(nz_inds[2])-buffer]), np.min([grain_select.shape[2],np.max(nz_inds[2])+buffer])
+        # Extract the subset of the large image that corresponds to this grain, this should help with code speed
+        nz_inds = np.nonzero(grain_select)
+        buffer = 3
+        imin, imax = np.max([0,np.min(nz_inds[0])-buffer]), np.min([grain_select.shape[0],np.max(nz_inds[0])+buffer])
+        jmin, jmax = np.max([0,np.min(nz_inds[1])-buffer]), np.min([grain_select.shape[1],np.max(nz_inds[1])+buffer])
+        kmin, kmax = np.max([0,np.min(nz_inds[2])-buffer]), np.min([grain_select.shape[2],np.max(nz_inds[2])+buffer])
 
-            grain_select = grain_select[imin:imax,jmin:jmax,kmin:kmax]
+        grain_select = grain_select[imin:imax,jmin:jmax,kmin:kmax]
 
-            # Smooth the grain_select indicator to get a smooth level set
-            num_refine = 3
-            smooth_length = 2
+        # Smooth the grain_select indicator to get a smooth level set
+        num_refine = 3
+        smooth_length = 2
 
-            # refine_time = datetime.now()
-            grain_select = np.repeat(np.repeat(np.repeat(grain_select,num_refine,axis=0),num_refine,axis=1),num_refine,axis=2).astype(np.float)
-            # refine_end_time = (datetime.now() - refine_time)
-            # print('Refine time: ' + str(refine_end_time))
-            # smooth_time = datetime.now()
-            grain_select = gaussian(grain_select,smooth_length) # second input is number of pixels it is smoothing over
-            # smooth_end_time = (datetime.now() - smooth_time)
-            # print('Smooth time: ' + str(smooth_end_time))
+        # refine_time = datetime.now()
+        grain_select = np.repeat(np.repeat(np.repeat(grain_select,num_refine,axis=0),num_refine,axis=1),num_refine,axis=2).astype(np.float)
+        # refine_end_time = (datetime.now() - refine_time)
+        # print('Refine time: ' + str(refine_end_time))
+        # smooth_time = datetime.now()
+        grain_select = gaussian(grain_select,smooth_length) # second input is number of pixels it is smoothing over
+        # smooth_end_time = (datetime.now() - smooth_time)
+        # print('Smooth time: ' + str(smooth_end_time))
 
-            # Compute the isosurface at the boundary
-            iso_val =  0.4*(np.max(grain_select)+np.min(grain_select)) # 0 outside, 1 inside.  0.5 Should be close to original edge, but this should be played with
+        # Compute the isosurface at the boundary
+        iso_val =  0.4*(np.max(grain_select)+np.min(grain_select)) # 0 outside, 1 inside.  0.5 Should be close to original edge, but this should be played with
 
-            # Set the values on the boundary to be slightly less than the iso value
-            # This ensures that the isosurface will contain the boundary near the grain
-            grain_select[[0,-1],:,:] = 0.999*iso_val
-            grain_select[:,[0,-1],:] = 0.999*iso_val
-            grain_select[:,:,[0,-1]] = 0.999*iso_val
+        # Set the values on the boundary to be slightly less than the iso value
+        # This ensures that the isosurface will contain the boundary near the grain
+        grain_select[[0,-1],:,:] = 0.999*iso_val
+        grain_select[:,[0,-1],:] = 0.999*iso_val
+        grain_select[:,:,[0,-1]] = 0.999*iso_val
 
-            # # plot a slice
-            # zind = 13
-            # plt.figure()
-            # plt.imshow(grain_select[:,:,zind*num_refine],cmap='gray')
-            # plt.contour(grain_select[:,:,zind*num_refine], levels=[iso_val],colors='r')
+        # # plot a slice
+        # zind = 13
+        # plt.figure()
+        # plt.imshow(grain_select[:,:,zind*num_refine],cmap='gray')
+        # plt.contour(grain_select[:,:,zind*num_refine], levels=[iso_val],colors='r')
 
-            # Apply marching cubes method to create mesh and convert back to full sample coordinates in mm
-            verts,faces,_,_ = marching_cubes_lewiner(grain_select,iso_val)
-            verts += num_refine*np.array([imin,jmin,kmin]) # Convert from subset indices to big indices
-            verts_mm = (verts-0.5)*voxelRes/num_refine + origin_mm # Convert from big indices to mm.  The -0.5 accounts for the fact that the point cloud is in the middle of a cell.
-            verts_mm = verts_mm[:,[1,0,2]]  # things got flipped somewhere so flip back to match delaunay method mesh orientation
+        # Apply marching cubes method to create mesh and convert back to full sample coordinates in mm
+        verts,faces,_,_ = marching_cubes(grain_select,iso_val)
+        verts += num_refine*np.array([imin,jmin,kmin]) # Convert from subset indices to big indices
+        verts_mm = (verts-0.5)*voxelRes/num_refine + origin_mm # Convert from big indices to mm.  The -0.5 accounts for the fact that the point cloud is in the middle of a cell.
+        verts_mm = verts_mm[:,[1,0,2]]  # things got flipped somewhere so flip back to match delaunay method mesh orientation
 
-            # run through meshfix repair just in case
-            meshfix = mf.MeshFix(verts_mm,faces)
-            meshfix.repair()
-            mesh = meshfix.mesh
+        # run through meshfix repair just in case
+        meshfix = mf.MeshFix(verts_mm,faces)
+        meshfix.repair()
+        mesh = meshfix.mesh
 
-            # reduce number of faces (triangles) for computational speed and output file size
-            mesh.decimate(decimate_val,inplace=True)
+        # reduce number of faces (triangles) for computational speed and output file size
+        mesh.decimate(decimate_val,inplace=True)
 
-            # save mesh
-            # mesh.save(os.path.join(path,'mc_mesh_%i.vtk')%grain)
+        # save mesh
+        # mesh.save(os.path.join(path,'mc_mesh_%i.vtk')%grain)
 
 
         # This section writes VTK file for individual grains, if option is selected, and combines grains into full sample mesh

@@ -158,7 +158,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                show_edges=False, opacity=1., color="w",
                diffuse=0.8, smooth_shading=True,specular=0.2)
 
-        _, perspective = plotter.show(screenshot=True)
+        perspective = plotter.show(screenshot=True)
 
 
         fig=plt.figure(figsize=(9,9))
