@@ -371,6 +371,9 @@ def MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,
 
         if total_border == 0:
             borderless.append(grain)
+            # save point cloud file
+            point_cloud = pv.PolyData(points)
+            point_cloud.save(os.path.join(outpath,'Cloud_%i.vtk')%grain)
 
         if len(x) < minpoints:
             print("Too few points, assuming grain is too small, skipping!")
@@ -522,6 +525,7 @@ def MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,
     # copy over VTK files for first 30 borderless grains to GRAINS folder
     for i in range (0,30):
         shutil.copy(os.path.join(outpath,'Grain_{}.vtk'.format(borderless[i])),os.path.join(GrainPath,'Grain_{}.vtk'.format(borderless[i])))
+        shutil.copy(os.path.join(outpath,'Cloud_{}.vtk'.format(borderless[i])),os.path.join(GrainPath,'Cloud_{}.vtk'.format(borderless[i])))
 
     # write properties to CSV
     dataFrame=pd.DataFrame.from_dict(dataDict)
