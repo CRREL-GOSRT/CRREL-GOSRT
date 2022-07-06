@@ -929,7 +929,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             Fice_Straight=0.0
 
     while inSnow:
-        if TIRbounce > 35: ## This takes care of total internal reflection bounce criteria
+        if TIRbounce > 1: ## This takes care of total internal reflection bounce criteria
             inSnow=False
 
             ## You've done the max number of bounces allowed, leave!
@@ -955,7 +955,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                 n1 = nAir
                 n2 = nIce
                 # Is ray transmitted or reflected?
-                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=TIRbounce)
                 if reflected:
                     ice = False
                 else:
@@ -967,7 +967,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                 n2 = nAir
                 v_n=-v_n
                 # If photon is not absorbed, is photon reflected?
-                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=TIRbounce)
                 if reflected:
                     ice = True
                 else:
