@@ -655,7 +655,7 @@ def TracktoExt(CRRELPolyData,pSource,pDir,raylen=1000,AirOnly=False):
     return pathLength,dot
 
 
-def TracktoAbsStraight(pSource,pDir,nIce,normalsMesh,obbTree,
+def TracktoAbsStraight(pSource,pTarget,nIce,normalsMesh,obbTree,
         nAir=1.00003,raylen=1000):
 
     """
@@ -682,8 +682,8 @@ def TracktoAbsStraight(pSource,pDir,nIce,normalsMesh,obbTree,
         TotalLength - (float) total distance (mm) traveled combined ice/air
     """
 
-    pSource=np.array(pSource)
-    pTarget = pSource + pDir * raylen
+    # pSource=np.array(pSource)
+    # pTarget = pSource + pDir * raylen
 
     #intersections = np.reshape(np.array(pSource), (1,3))
 
