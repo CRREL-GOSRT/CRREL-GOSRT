@@ -342,6 +342,7 @@ def castRayAll(pSource,pTarget,obbTree,normalsMesh):
 
     distances=[]
     normals=[]
+    intersections =[]
     if code == 0:
         isHit = False
         # Return empty variables
@@ -364,10 +365,11 @@ def castRayAll(pSource,pTarget,obbTree,normalsMesh):
 
             distances.append(ptsDistance(p1,intersectionPt))
             normals.append(np.dot(v_i,v_n))
+            intersections.append(intersectionPt)
 
             p1=intersectionPt[:]
 
-    return np.array(distances),np.array(normals), isHit
+    return np.array(distances),np.array(normals), isHit,intersections
 
 def castFirst(pSource,pTarget,obbTree,normalsMesh):
     """
@@ -692,7 +694,7 @@ def TracktoAbsStraight(pSource,pTarget,nIce,normalsMesh,obbTree,
     Hice=[0]
     Hgaps=[0]
 
-    distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+    distances,normals, isHit,intersections = castRayAll(pSource, pTarget,obbTree, normalsMesh)
 
     if isHit ==True:
         TotalLength=np.sum(distances)
@@ -701,7 +703,7 @@ def TracktoAbsStraight(pSource,pTarget,nIce,normalsMesh,obbTree,
         Hgaps=list(np.ma.masked_where(normals>0,distances).compressed())
         Hice=list(np.ma.masked_where(normals<=0,distances).compressed())
 
-    return TotalIceLength,TotalLength,Hgaps, Hice
+    return TotalIceLength,TotalLength,Hgaps, Hice,intersections
 
 
 
@@ -929,7 +931,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             Fice_Straight=0.0
 
     while inSnow:
-        if TIRbounce > 1: ## This takes care of total internal reflection bounce criteria
+        if TIRbounce > 4: ## This takes care of total internal reflection bounce criteria
             inSnow=False
 
             ## You've done the max number of bounces allowed, leave!
