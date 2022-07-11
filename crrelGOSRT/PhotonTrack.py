@@ -18,7 +18,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                                  phaseSmooth=300,
                                  Advanced = True,TrackThresh=0.1,TrackDepthMax=4,straight=False,
                                  Multi = False, Polar = False,FiceFromDensity=False,particlePhase=True,AirOnly=False,
-                                 ComputeB=True):
+                                 ComputeB=True,Tolerance = 0.001,MeshDescription='Snow Mesh'):
 
     """
         This function calls individual sub-functions to get optical properties and saves them to file for
@@ -99,6 +99,14 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                                                       Setting this to True this can save 1-2 hours of run time for a given simulation, but then the ray-tracing is run
                                                       for this option.
 
+
+            Tolerance (float) - Tolerance used in vtk.obbTree to determine how close a ray needs to be to a mesh "cell" to
+                            count as an intersection.  Recommended that a value of no larger than 0.001 is used, especially for
+                            versions of vtk < 9.1.x. 0.01 seems to work for vtk versions > 9.1.
+                            To be safe, I have set an assertion that this value is < 0.02.
+
+            MeshDescription (optional/string) - You can add a descriptive name to the mesh that will be passed to the optical file.
+
         Returns:
             Saves optical properties to the OutputFilename, and returns a figure showing the optical properites
             if plot == false, then the returned figure is "None"
@@ -121,7 +129,8 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         print("Voxel Resolution = %.5f mm"%VoxelRes_mm)
 
     ## Get SnowMesh
-    SnowMesh,sampleVolumeOut,Density,SSA,GrainDiam=ReadMesh(VTKFilename,VoxelRes_mm,verbose=verbose)
+    SnowMesh,sampleVolumeOut,Density,SSA,GrainDiam=ReadMesh(VTKFilename,VoxelRes_mm,verbose=verbose,
+                                                            Tolerance=Tolerance,description=MeshDescription)
 
     print("Finished loading mesh ... ")
     SnowMesh.AssignMaterial('ice',filePath=MaterialPath)  ##Assign Material
@@ -247,6 +256,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     today=datetime.now().strftime('%c')
     with open(OutputFilename, 'w') as file:
        file.write("Optical Properties File Created From %s \n"%VTKFilename)
+       file.write("Mesh Description: %s"%SnowMesh.description)
        if isinstance(kIce,list) == True:
            OutputFileMulti=OutputFilename.split('.txt')[0]+'_ExtAbso.txt'
            print("Saving wavelength dependent optical properties to: %s"%OutputFileMulti)
@@ -691,7 +701,7 @@ def CurveFit(x,ke):
     return 1.-np.exp(-ke*x)
 
 
-def ReadMesh(VTKfile,VoxelResolution,verbose=False):
+def ReadMesh(VTKfile,VoxelResolution,Tolerance=0.001,verbose=False,description='Real Snow Mesh'):
     """Helper function to read in data from a VTK file and format the 3D mesh
        into the CRRELPolyData Format and compute some physical properties for the mesh using pyvista.
 
@@ -699,8 +709,14 @@ def ReadMesh(VTKfile,VoxelResolution,verbose=False):
             VTKfile (string) - Filepath of .vtk or .stl file.
             VoxelResolution - (float) Voxel resolution (in mm)
 
+            Tolerance (optional/float) - Tolerance used in vtk.obbTree to determine how close a ray needs to be to a mesh "cell" to
+                            count as an intersection.  Recommended that a value of no larger than 0.001 is used, especially for
+                            versions of vtk < 9.1.x. 0.01 seems to work for vtk versions > 9.1.
+                            To be safe, I have set an assertion that this value is < 0.02.
+
             verbose (optional) - Boolean Flag - if true , will print out computed physical properites of the mesh.
 
+            description (optional/string) - You can add a descriptive name to the mesh that will be passed to the optical file.
 
         Returns:
             Mesh (CRRELPolyData) - Mesh Data
@@ -734,7 +750,8 @@ def ReadMesh(VTKfile,VoxelResolution,verbose=False):
     SSA=SfcArea/snowMass ## Compute SSA (m^2/kg)
     GrainDiam=6./(917.0*SSA)*1000. ## Estimate Optical Diameter from SSA and convert to mm
 
-    Mesh=CRRELPolyData._CRRELPolyData(shell,xBounds,yBounds,zBounds,VoxelResolution,Density,description='REAL Snow Mesh')
+    Mesh=CRRELPolyData._CRRELPolyData(shell,xBounds,yBounds,zBounds,VoxelResolution,
+                                      Density,description=description,Tolerance=Tolerance)
 
     if verbose == True:
         print("Density, %.2f kg/m^3"%Density)

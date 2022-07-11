@@ -25,9 +25,11 @@ class _CRRELPolyData:
             resolution (float) - Voxel resolution (in mm)
             density (float) - snow density of mesh sample (kg/m3)
             units (optional/string) - units of mesh, leave as mm please.
+            description (optional/string) - You can add a descriptive name to the mesh that will be passed to the optical file.
             Tolerance (float) - Tolerance used in vtk.obbTree to determine how close a ray needs to be to a mesh "cell" to
                             count as an intersection.  Recommended that a value of no larger than 0.001 is used, especially for
-                            versions of vtk < 9.1.x.
+                            versions of vtk < 9.1.x. 0.01 seems to work for vtk versions > 9.1.
+                            To be safe, I have set an assertion that this value is < 0.02.
 
 
     """
