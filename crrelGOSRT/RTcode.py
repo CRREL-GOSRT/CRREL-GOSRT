@@ -914,6 +914,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
 
     TotalIceLength=0
     TotalLength=0
+    first_path_length = 0
     bounce=0
     TIRbounce=0
     first=True
@@ -952,8 +953,6 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             v_n = np.array(normalMeshIntersection).squeeze()
             # Check to see if ray if incident ray is inside or outside of dense material
             # Assign indices of refraction values
-            if first == True:
-                first = False
             if np.dot(v_i, v_n) < 0: ## you are in AIR!
                 # Assign indices of refraction values
                 n1 = nAir
@@ -978,6 +977,12 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                     ice = False
 
                 TotalIceLength+=ptsDistance(pSource, intersectionPt)
+                if first == True:
+                    first = False
+                    
+                if bounce ==1:
+                    first_path_length = ptsDistance(pSource, intersectionPt)
+                    
 
             ## Get Reflected/Transmitted Weights Amount ##
             TotalLength+=ptsDistance(pSource, intersectionPt)
@@ -997,7 +1002,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
         else:
             Bparam=-9999
 
-    return TotalIceLength,TotalLength,intersections,Bparam
+    return TotalIceLength,TotalLength,intersections,Bparam,first_path_length
 
 
 def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',
