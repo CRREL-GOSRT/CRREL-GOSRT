@@ -11,7 +11,19 @@ from matplotlib import pyplot as plt
 class SlabModel:
     """SlabModel is the main class for the CRREL Photon Tracking Snow Geometric Optics RTM.
 
-        Version 0.2.1 --> Replaced version 0.2.1 September 2021
+        Version 0.3.0 --> Replaced version 0.2.1 July 2022
+
+            Key 0.2.1 -> 0.3.0 Changes:
+                - incorporated important scaling factor for Fice in the absorption exponential following analytical relationships
+                  relating Fice, snow density, and B described in Libois et al. (2013) and Libois et al. (2014).
+                - Absorption Enhancment parameter "B" is read in from the optical properties file and used in absorption.
+                - Snow Density (kg/m3) is read in from optical properties file and used in the absorption function.
+                - Temporary functions that were used
+                    to read supplimentary files in to compute the extinction coefficient as a spectrally-variable parameter
+                    for testing purposes have been removed.
+                - Note that while the extinction coefficient name has been retaining for the variables, it is really a "scattering coefficient"
+                  as it is spectrally-invarient and is used to determine distance between scattering events only and directional changes
+                  in the slab model, and not truely extinction events.
 
             Key 0.2.0 -> 0.2.1 Changes:
                 - Updated the namelist dictionary to remove references to LayerPaths to cut down on superfluous folder paths, replaced layer paths with file names
@@ -114,9 +126,7 @@ class SlabModel:
                            'RussianRouletteWeight':6,
                            'xSize':10,
                            'ySize':10,
-                           'DiffuseFraction':0,
-                           'Absorption':1,
-                           'Extinction':1
+                           'DiffuseFraction':0
                            }
 
         cwd=os.getcwd()
@@ -234,58 +244,11 @@ class SlabModel:
         ## Note that SOOT is unique from Fice, in that it is determined in the namelist, not the properties file,
         ## this may change in future versions.
 
-        ## If Absorption == 2, then assume using an absorbtion coefficient, require a supplementary file
-        ## with wavelength dependent Kext and Kabs.
-
-        if self.namelistDict['Absorption'] == 2:
-            self.__AbsorbtionMethod = 2
-            print("Using Medium Absorption Coefficient instead of F-ice to simulate absorption")
-            print("Note, this requires supplementary files that have WaveLength dependent values for")
-            print("Kext and Kabs.")
-
-            ## First check for files! , will crash if there are no files here, that's a good thing.
-            self.__SuppFiles=[glob.glob(os.path.join(self.namelistDict['MasterPath'],i.split('.txt')[0]+'_ExtAbso.txt'))[0] for i in self.namelistDict['PropFileNames']]
-            ## NOW WE have a LIST of supplementary files.
-
-            ## NOW WE WANT arrays OF Wavelengths, Kabs and Kext to go with EACH layer.
-            ## INITIALIZE THESE Dictionarys here, all with the prefix "supp" to indicate supplementary
-            self.__SuppExtCoeffDict={}
-            self.__SuppKabsCoeffDict={}
-            self.__SuppWavelengthDict={}
-
-            for idx, i in enumerate(self.__SuppFiles):
-                SuppData=pd.read_csv(i,header=1)
-                self.__SuppExtCoeffDict[self.__layerIds[idx]]=SuppData['Extinction'][:]
-                self.__SuppKabsCoeffDict[self.__layerIds[idx]]=SuppData['Absorption'][:]
-                self.__SuppWavelengthDict[self.__layerIds[idx]]=SuppData['wavelength (nm)'][:]
-                SuppData=None ## Clear the memory here.
-
-            ## NOW WE HAVE THE NEEDED LISTS TO USE IF Absorption == 2.
-        else:
-            ## Otherwise, just set it to 1.
-
-            if self.namelistDict['Extinction'] == 2:
-                ## Just grab the extinction dictionary.
-                self.__ExtinctionMethod = 2
-                print("Using Wavelength-variable extinction coefficient.")
-                print("Note, this requires supplementary files that have WaveLength dependent values for Kext")
-                self.__SuppFiles=[glob.glob(os.path.join(self.namelistDict['MasterPath'],i.split('.txt')[0]+'_ExtAbso.txt'))[0] for i in self.namelistDict['PropFileNames']]
-                ## NOW WE have a LIST of supplementary files.
-                self.__SuppExtCoeffDict={}
-                self.__SuppWavelengthDict={}
-                for idx, i in enumerate(self.__SuppFiles):
-                    SuppData=pd.read_csv(i,header=1)
-                    self.__SuppExtCoeffDict[self.__layerIds[idx]]=SuppData['Extinction'][:]
-                    self.__SuppWavelengthDict[self.__layerIds[idx]]=SuppData['wavelength (nm)'][:]
-                    SuppData=None ## Clear the memory here.
-            else:
-                self.__ExtinctionMethod = 1
-
-            self.__AbsorbtionMethod = 1
 
         self.__ExtCoeffDict={}
         self.__FiceDict={}
-
+        self.__BDict={}
+        self.__DensDict={}
         self.__SootDict={}
         headerLines=[]
         for idx, i in enumerate(self.namelistDict['PropFileNames']):
@@ -299,6 +262,10 @@ class SlabModel:
                     self.__ExtCoeffDict[self.__layerIds[idx]] = float(c.split('=')[-1].split('(')[0])
                 if '(Fice)' in c and 'Mean' in c:
                     self.__FiceDict[self.__layerIds[idx]] = float(c.split('=')[-1])
+                if 'Parameter (B)' in c:
+                    self.__BDict[self.__layerIds[idx]] = float(c.split('=')[-1])
+                if 'Estimated Sample Density' in c:
+                    self.__DensDict[self.__layerIds[idx]] = float(c.split('=')[-1].split('(')[0])
                 if 'Theta (radians)' in c:
                     headerLines.append(cdx)
 
@@ -434,8 +401,8 @@ class SlabModel:
         return CosNew[:]
 
 
-    def __ChangeLayers(self,u0,u1,currentBin,layerIds,Fice,extCoeff,Fsoot,
-                    ExtDict,IceDict,SootDict,g,Scatter,ProbIdx):
+    def __ChangeLayers(self,u0,u1,currentBin,layerIds,Fice,B,extCoeff,Fsoot,Dens,
+                    ExtDict,IceDict,Bdict,SootDict,DensDict,g,Scatter,ProbIdx):
         """
             Critical function that handles the transition from one layer to another
 
@@ -446,11 +413,15 @@ class SlabModel:
                     each layer for each photon
                 layerIds = array with number indentification indicating which layer the photon is currently in
                 Fice = ice-fraction applied to each photon based on it's current layer
+                B = absorption enhancment parameter (B) applied to each photon based on it's current layer
                 extCoeff = extintion coefficient applied to each photon based on it's current layer
                 Fsoot = soot or dust fraction applied to medium
+                Dens = Snow density(kg/m3) applied to each photon based on it's current layer
                 ExtDict = dictionary of extiction coefficients corresponding to each unique layer
                 IceDict = dictionary of ice-fraction corresponding to each unique layer
+                BDict = dictionary of absorption enhancment parameter (B) corresponding to each unique layer
                 SootDict = dictionary of soot fraction corresponding to each unique layer
+                DensDict = dictionary of Snow densities (kg/m3) corresponding to each unique layer
                 g       = Asymmetry parameter used in idealized HeyNey-Greenstein function
                 Scatter = scattering direction for photon travel based on phase-function
                 ProbIdx = Indicies used to pull random values from scattering direction array
@@ -469,12 +440,18 @@ class SlabModel:
         if len(fact) > 1:
             self.Warning("Upper Move max factor = %.1f"%np.max(fact))
 
-        ## interpolate Fice and Fsoot to weighted averaged between layers.
+        ## interpolate Fice, B, and Fsoot to weighted averaged between layers.
         Fice[UpperMovIdx]=(np.array([IceDict[i] for i in layerIds[UpperMovIdx]])*fact
                         + (1.-fact)*Fice[UpperMovIdx])
 
+        B[UpperMovIdx]=(np.array([Bdict[i] for i in layerIds[UpperMovIdx]])*fact
+                            + (1.-fact)*B[UpperMovIdx])
+
         Fsoot[UpperMovIdx]=(np.array([SootDict[i] for i in layerIds[UpperMovIdx]])*fact
                         + (1.-fact)*Fsoot[UpperMovIdx])
+
+        Dens[UpperMovIdx]=(np.array([DensDict[i] for i in layerIds[UpperMovIdx]])*fact
+                        + (1.-fact)*Dens[UpperMovIdx])
 
         ## No need to interpolate the extinction coefficient, since we assume that the "scattering event"
         ## already occurred within the new layer.
@@ -514,8 +491,14 @@ class SlabModel:
         Fice[LowerMovIdx]=(np.array([IceDict[i] for i in layerIds[LowerMovIdx]])*fact
                         + (1.-fact)*Fice[LowerMovIdx])
 
+        B[LowerMovIdx]=(np.array([BDict[i] for i in layerIds[LowerMovIdx]])*fact
+                        + (1.-fact)*B[LowerMovIdx])
+
         Fsoot[LowerMovIdx]=(np.array([SootDict[i] for i in layerIds[LowerMovIdx]])*fact
                         + (1.-fact)*Fsoot[LowerMovIdx])
+
+        Dens[LowerMovIdx]=(np.array([DensDict[i] for i in layerIds[LowerMovIdx]])*fact
+                        + (1.-fact)*Dens[LowerMovIdx])
 
         extCoeff[LowerMovIdx]=np.array([ExtDict[i] for i in layerIds[LowerMovIdx]])
 
@@ -536,7 +519,7 @@ class SlabModel:
             self.FatalError("Scattering Phase Function Greater than 1!!!! Max = %.1f"%np.max(np.abs(Scatter)))
 
         ## Retuns LayerIds to set next iteration, also the unique scattering phase function and ext/abs coefficients
-        return layerIds, Scatter, Fice, extCoeff, Fsoot
+        return layerIds, Scatter, Fice, extCoeff, Fsoot, B, Dens
 
 
     def PrintSlabProps(self):
@@ -577,7 +560,9 @@ class SlabModel:
 
             print("Extinction Coefficient/Fice/Fsoot")
             for i in self.__layerIds:
-                print("  Id = %s | ext = %s | Fice = %s | Fsoot = %s"%(i,self.__ExtCoeffDict[i],self.__FiceDict[i],self.__SootDict[i]))
+                print("  Id = %s | ext = %s | Fice = %s | Fsoot = %s | B = %s | Density %s"%(i,
+                                    self.__ExtCoeffDict[i],self.__FiceDict[i],
+                                    self.__SootDict[i],self.__BDict[i],self.__DensDict[i]))
 
             print("Diffuse Fraction %s"%self.__DiffuseFraction)
 
@@ -669,6 +654,9 @@ class SlabModel:
         extCoeff = np.array([self.__ExtCoeffDict[i] for i in layerIds])
         Fice = np.array([self.__FiceDict[i] for i in layerIds])
         Fsoot = np.array([self.__SootDict[i] for i in layerIds])
+        Bparam = np.array(self.__BDict[i] for i in layerIds)
+        SnowDens = np.array([self.__DensDict[i] for i in layerIds])
+
         if self.namelistDict['PhaseFunc'] == 1: ## If using idealized Henyey Green Function!
             g=np.array([self.namelistDict['Asymmetry'][i] for i in layerIds])
         else:
@@ -821,6 +809,8 @@ class SlabModel:
             extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
             Fice = np.array([self.__FiceDict[i] for i in layerIds])
             Fsoot = np.array([self.__SootDict[i] for i in layerIds])
+            Bparam = np.array([self.__BDict[i] for i in layerIds])
+            SnowDens = np.array([self.__DensDict[i] for i in layerIds])
 
             if self.namelistDict['PhaseFunc'] == 1: ## If using idealized Reset Phase Function Scattering
                 g=np.array([self.namelistDict['Asymmetry'][i] for i in layerIds])
@@ -843,13 +833,14 @@ class SlabModel:
                 Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
                 ProbIdx=0
             ## Change the layers if needed.
-            layerIds, Scatter, Fice, extCoeff,Fsoot=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,extCoeff,Fsoot,
-                                                                self.__ExtCoeffDict,self.__FiceDict,self.__SootDict,
+            layerIds, Scatter, Fice, extCoeff,Fsoot,Bparam,SnowDens=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,Bparam,extCoeff,Fsoot,SnowDens,
+                                                                self.__ExtCoeffDict,self.__FiceDict,self.__BDict,self.__SootDict,self.__DensDict,
                                                                 g,Scatter,ProbIdx)
 
 
             ## Absorb some photons! ##
-            deltaW=(1.-np.exp(-s*(kappaIce*Fice+kappaSoot*Fsoot)))*Photons
+            Bscale = (1. + SnowDens/917.0*(Bparam - 1.))
+            deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale+kappaSoot*Fsoot)))*Photons
             absorbed+=np.sum(deltaW)
             Photons=Photons-deltaW
 
@@ -974,25 +965,12 @@ class SlabModel:
             ## Starting at top layer, so all layer ids start at zero!
             layerIds=np.zeros([nPhotons],dtype=np.short) ## short integer
 
-            if self.__AbsorbtionMethod == 2:
-                ##NOTE HERE THAT WE ARE RESETTING THE DICTIONARYS FOR F_ICE AND EXT TO MATCH THE
-                ##CURRENT WaveLength!!!
-                for i in self.__layerIds:
-                    SubbWave=self.__SuppWavelengthDict[i]
-                    AbsArray=self.__SuppKabsCoeffDict[i]
-                    self.__FiceDict[i] = np.interp(wavelen,SubbWave,AbsArray)
-
-            if self.__ExtinctionMethod == 2:
-                for i in self.__layerIds:
-                    SubbWave=self.__SuppWavelengthDict[i]
-                    ExtArray=self.__SuppExtCoeffDict[i]
-                    self.__ExtCoeffDict[i] = np.interp(wavelen,SubbWave,ExtArray)
-
 
             extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
             Fice = np.array([self.__FiceDict[i] for i in layerIds])
             Fsoot = np.array([self.__SootDict[i] for i in layerIds])
-
+            Bparam = np.array([self.__BDict[i] for i in layerIds])
+            SnowDens = np.array([self.__DensDict[i] for i in layerIds])
 
             if self.namelistDict['PhaseFunc'] == 1: ## If using idealized HeyNey Green Function!
                 g=np.array([self.namelistDict['Asymmetry'][i] for i in layerIds])
@@ -1130,6 +1108,9 @@ class SlabModel:
                 extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
                 Fice = np.array([self.__FiceDict[i] for i in layerIds])
                 Fsoot = np.array([self.__SootDict[i] for i in layerIds])
+                Bparam = np.array([self.__BDict[i] for i in layerIds])
+                SnowDens = np.array([self.__DensDict[i] for i in layerIds])
+
                 ## okay, to recap, we have performed the russian roulette routine to handel dead PHOTONS
                 ## Moved the photon through space following the direction vector and current position.
                 ## updated albedo transmissivity based on whether photons have left the snowpack entirely
@@ -1147,17 +1128,14 @@ class SlabModel:
                     Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
                     ProbIdx=0
 
-                layerIds, Scatter, Fice, extCoeff,Fsoot=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,extCoeff,Fsoot,
-                                                                    self.__ExtCoeffDict,self.__FiceDict,self.__SootDict,
+                layerIds, Scatter, Fice, extCoeff,Fsoot,Bparam,SnowDens=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,Bparam,extCoeff,Fsoot,SnowDens,
+                                                                    self.__ExtCoeffDict,self.__FiceDict,self.__BDict,self.__SootDict,self.__DensDict,
                                                                     g,Scatter,ProbIdx)
 
                 ## Absorb some photons! ##
-                if self.__AbsorbtionMethod == 1:
-                    deltaW=(1.-np.exp(-s*(kappaIce*Fice+kappaSoot*Fsoot)))*Photons
+                Bscale = (1. + SnowDens/917.0*(Bparam - 1.))
+                deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale+kappaSoot*Fsoot)))*Photons
 
-                else:
-                    ## Remember, if absorption method == 2, then Fice IS the absorption coefficient
-                    deltaW=(1. - np.exp(-s*Fice))*Photons
 
                 absorbed+=np.sum(deltaW)
                 Photons=Photons-deltaW
@@ -1273,6 +1251,9 @@ class SlabModel:
         extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
         Fice = np.array([self.__FiceDict[i] for i in layerIds])
         Fsoot = np.array([self.__SootDict[i] for i in layerIds])
+        Bparam = np.array([self.__BDict[i] for i in layerIds])
+        SnowDens = np.array([self.__DensDict[i] for i in layerIds])
+
         if self.namelistDict['PhaseFunc'] == 1: ## If using idealized HeyNey Green Function!
             g=np.array([self.namelistDict['Asymmetry'][i] for i in layerIds])
         else:
@@ -1380,6 +1361,9 @@ class SlabModel:
             extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
             Fice = np.array([self.__FiceDict[i] for i in layerIds])
             Fsoot = np.array([self.__SootDict[i] for i in layerIds])
+            Bparam = np.array([self.__BDict[i] for i in layerIds])
+            SnowDens = np.array([self.__DensDict[i] for i in layerIds])
+
             ## okay, to recap, we have performed the russian roulette routine to handel dead PHOTONS
             ## Moved the photon through space following the direction vector and current position.
             ## updated albedo transmissivity based on whether photons have left the snowpack entirely
@@ -1398,12 +1382,13 @@ class SlabModel:
                 Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
                 ProbIdx=0
 
-            layerIds, Scatter, Fice, extCoeff,Fsoot=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,extCoeff,Fsoot,
-                                                                self.__ExtCoeffDict,self.__FiceDict,self.__SootDict,
+            layerIds, Scatter, Fice, extCoeff,Fsoot,Bparam,SnowDens=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,Bparam,extCoeff,Fsoot,SnowDens,
+                                                                self.__ExtCoeffDict,self.__FiceDict,self.__BDict,self.__SootDict,self.__DensDict,
                                                                 g,Scatter,ProbIdx)
 
             ## Absorb some photons! ##
-            deltaW=(1.-np.exp(-s*(kappaIce*Fice+kappaSoot*Fsoot)))*Photons
+            Bscale = (1. + SnowDens/917.0*(Bparam - 1.))
+            deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale+kappaSoot*Fsoot)))*Photons
 
             absorbed+=np.sum(deltaW)
             Photons=Photons-deltaW
