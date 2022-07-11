@@ -337,7 +337,9 @@ def castRayAll(pSource,pTarget,obbTree,normalsMesh):
     cellIds = vtk.vtkIdList()              # Contains intersection cell ID
 
     # Perform intersection test
+    drct = pts2unitVec(pSource, pTarget)
     code = obbTree.IntersectWithLine(pSource, pTarget, pointsIntersection, cellIds)
+
     numIntersections = pointsIntersection.GetNumberOfPoints()
 
     distances=[]
@@ -354,14 +356,14 @@ def castRayAll(pSource,pTarget,obbTree,normalsMesh):
         isHit = True
         pointsIntersectionData = pointsIntersection.GetData()
         v_i = pts2unitVec(pSource, pTarget).squeeze()
-
         for idx in range(numIntersections):
+            ##ensure direction is good!
+            checkDrct = pts2unitVec(p1, pointsIntersectionData.GetTuple3(idx))
 
             v_n = np.array(normalsMesh.GetTuple(cellIds.GetId(idx)))
             intersectionPt = np.array(pointsIntersectionData.GetTuple3(idx))
             cellIdIntersection = cellIds.GetId(idx)
             normalMeshIntersection = v_n
-
 
             distances.append(ptsDistance(p1,intersectionPt))
             normals.append(np.dot(v_i,v_n))
@@ -921,7 +923,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
     Bparam=-9999
     if computeB == True:
         ## Quick get F_ice for strange launch!
-        distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+        distances,normals, isHit,inters = castRayAll(pSource, pTarget,obbTree, normalsMesh)
         TotalLength=np.sum(distances)
 
         if isHit ==True:

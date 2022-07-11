@@ -17,10 +17,26 @@ class _CRRELPolyData:
 
         where "shell" is the vtkMesh.
 
-        Admittedly, this object class requires more documentation, hopefully we can get around to adding it later!
+        Inputs:
+            mesh (vtk polydata) - vtk polydata where mesh information is stored
+            xBounds (list size 2: float) - list of min/max physical boundaries of the mesh in the x direction
+            yBounds (list size 2: float) - list of min/max physical boundaries of the mesh in the y direction
+            zBounds (list size 2: float) - list of min/max physical boundaries of the mesh in the z direction
+            resolution (float) - Voxel resolution (in mm)
+            density (float) - snow density of mesh sample (kg/m3)
+            units (optional/string) - units of mesh, leave as mm please.
+            Tolerance (float) - Tolerance used in vtk.obbTree to determine how close a ray needs to be to a mesh "cell" to
+                            count as an intersection.  Recommended that a value of no larger than 0.001 is used, especially for
+                            versions of vtk < 9.1.x.
+
+
     """
-    def __init__(self,mesh,xBounds,yBounds,zBounds,resolution,density,units='mm',description='unknown'):
+    def __init__(self,mesh,xBounds,yBounds,zBounds,resolution,density,units='mm',description='unknown',Tolerance=0.001):
         import vtk
+
+        assert Tolerance < 0.02, "This Tolerance %s is too high, and will produce bad results, recommend a value of 0.001 or lower."
+
+
         self.xBounds=xBounds
         self.yBounds=yBounds
         self.zBounds=zBounds
@@ -38,6 +54,7 @@ class _CRRELPolyData:
         self.obbTree = vtk.vtkOBBTree()
         self.obbTree.SetDataSet(self.PolyData)
         self.obbTree.BuildLocator()
+        self.obbTree.SetTolerance(Tolerance)
 
         # Create a new 'vtkPolyDataNormals' and connect to triangulated surface mesh
         normalsCalcMesh = vtk.vtkPolyDataNormals()
