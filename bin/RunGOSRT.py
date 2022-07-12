@@ -107,13 +107,13 @@ sys.exit()
 #%% Run photon-tracking model to get sample optical properties
 
 # Define voxel resolution and wavelength of light used in computing optical properties
-wavelen='900nm'
+wavelen='1000nm'
 VoxelRes='19.88250um'
 
 
 # Output filename
 OutputFile = 'Optical_Properties_updated2.txt'
-fullMeshName='SphereMesh_025mm_8mm3.vtk'
+fullMeshName='SphereMesh_1mm_8mm3.vtk'
 
 # File definitions (shouldn't have to change)
 VTKFilename = os.path.join(fp.VTK_DATA_OUTPATH,fullMeshName)
@@ -122,8 +122,8 @@ OutputName = os.path.join(fp.OPT_PROP_OUTPATH,OutputFile)
 
 # Compute optical properties
 fig=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainPath,OutputName,fp.MATERIAL_PATH,wavelen,VoxelRes,
-                                         verbose=True,nPhotons=3500,Multi=False,GrainSamples=30,Advanced=True,
-                                         FiceFromDensity=False,straight=False,maxBounce=120,particlePhase=False)
+                                         verbose=True,nPhotons=500,GrainSamples=30,Advanced=True,
+                                         maxBounce=120,PF_fromSegmentedParticles=False)
 
 # Save figure
 fig.savefig(os.path.join(fp.OPT_PROP_OUTPATH,'OptProps.png'),dpi=90)
