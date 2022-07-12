@@ -154,7 +154,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
     ## Get Extinction Coefficient... ##
     time1=datetime.now()
-    popt,kExt,distances,extinction,bad=ComputeExtinction(SnowMesh,distances,kIce,nPhotons,Multi=Multi,verbose=verbose,AirOnly=AirOnly)
+    kExt,distances,extinction,bad=ComputeExtinction(SnowMesh,distances,kIce,nIce,nPhotons,Multi=Multi,verbose=verbose,AirOnly=AirOnly)
     time2=datetime.now()
 
     text="SSA = %.1f m^2/kg \nrho_s = %.1f kg/m^3 \nSample Vol = %.1f mm^3"%(SSA,Density,sampleVolumeOut)
@@ -167,26 +167,27 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                show_edges=False, opacity=1., color="w",
                diffuse=0.8, smooth_shading=True,specular=0.2)
 
-        perspective = plotter.show(screenshot=True)
+        perspective = plotter.show(screenshot=True)  ### this is returning a NoneType object for me, causing issue with subplot 2,2,2 below
 
 
         fig=plt.figure(figsize=(9,9))
         ax=fig.add_subplot(2,2,1)
-        ax.scatter(distances,extinction,label='POE')
-        ax.plot(distances, CurveFit(distances, *popt), 'r-',label='fit: Ke=%.2f' % (popt[0]))
-        ax.legend()
+        # ax.scatter(distances,extinction,label='POE')
+        # ax.plot(distances, CurveFit(distances, *popt), 'r-',label='fit: Ke=%.2f' % (popt[0]))
+        ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='1/mfp')
+        # ax.legend()
         ax.set_ylabel("POE")
         ax.set_xlabel("$d$ (mm)")
         plt.title("Curve fit for $\gamma_{ext}$")
         ax.grid()
 
         ax=fig.add_subplot(2,2,2)
-        ax.imshow(perspective)
+        # ax.imshow(perspective)  ## commented for now until we debug perspective variable
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 
 
-    print("Found Extinction Coefficient = %.2f after %.1f seconds"%(popt[0],(time2-time1).total_seconds()))
+    print("Found Extinction Coefficient = %.2f after %.1f seconds"%(kExt,(time2-time1).total_seconds()))
     print("Total Bad Photons =%i --> %.3f percent of all photons"%(bad,len(distances)*100.*bad/nPhotons))
     print("------------------------------------")
 
@@ -552,7 +553,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
 
         return Fice,TotalLengths,missed,POWER,thetas,Fice_Straight
 
-def ComputeExtinction(SnowMesh,distances,kIce,nPhotons,Multi=False,verbose=False,trim=False,AirOnly=False):
+def ComputeExtinction(SnowMesh,distances,kIce,nIce,nPhotons,Multi=False,verbose=False,trim=False,AirOnly=False):
     """Computes the k_{ext} optical property by running a customized version of the
        curve fitting/ray tracing model described in Xiong et al. (2015):
 
@@ -585,6 +586,9 @@ def ComputeExtinction(SnowMesh,distances,kIce,nPhotons,Multi=False,verbose=False
     extinction=np.zeros_like(distances)
     bad=0
     percent5=int(0.05*nPhotons)
+    
+    normalsMesh=SnowMesh.GetNormalsMesh()
+    obbTree=SnowMesh.GetObbTree()
 
     if Multi == True:
         x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
@@ -619,82 +623,92 @@ def ComputeExtinction(SnowMesh,distances,kIce,nPhotons,Multi=False,verbose=False
                     timeNow=datetime.now()
                     print("Total percent complete =%.1f | Time Elapsed: %.1f seconds"%(100.*(ddx+1.)/nPhotons,(timeNow-time1).total_seconds()))
     else:
-        dists=[]
-        dots=[]
+        # dists=[]
+        # dots=[]
+        mfp = 0  # mean free path
         for ii in range(nPhotons):
             x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
             y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
             z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
 
             p11=[x1,y1,z1]
-            pDir=np.random.uniform(-1,1,3)
+            p22=[x2,y2,z2]
+            
+            pDir=RTcode.pts2unitVec(p11, p22)
+            pSource=np.array(p11)
+            # pDir=np.random.uniform(-1,1,3)
 
-            dist,dot=RTcode.TracktoExt(SnowMesh,p11,pDir,raylen=(SnowMesh.xBounds[1]-SnowMesh.xBounds[0]),AirOnly=AirOnly)
+            TotalIceLength,TotalLength,intersections,Bparam,first_path_length = RTcode.TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
+                    nAir=1.00003,polar=0,maxBounce=100)
+            
+            mfp += (TotalLength/len(intersections))  # add up mean free paths to divide by nPhotons below
+            # dist,dot=RTcode.TracktoExt(SnowMesh,p11,pDir,raylen=(SnowMesh.xBounds[1]-SnowMesh.xBounds[0]),AirOnly=AirOnly)
             # except:
             #     if verbose == True:
             #         print("Bad Photon! Something weird happened, so I'm skipping this!")
             #     bad+=1.
             #     continue
-            dists.append(dist)
-            dots.append(dot)
+            # dists.append(dist)
+            # dots.append(dot)
 
             if ii%percent5 == 0:
                 if verbose == True:
                     timeNow=datetime.now()
                     print("Total percent complete =%.1f | Time Elapsed: %.1f seconds"%(100.*(ii+1.)/nPhotons,(timeNow-time1).total_seconds()))
 
-        dots=np.array(dots)
-        dists=np.array(dists)
-        distmask=np.ma.masked_invalid(dists)
-        dots=np.ma.masked_array(dots,mask=distmask.mask).compressed()
-        dists=distmask.compressed()
-        if isinstance(kIce,list) == True:
-            ### Compute Extinction Coefficient for ALL wavelenghts
-            kExt=[]
-            for kdx, k in enumerate(kIce):
-                for ddx, d in enumerate(distances):
-                    mask=np.ma.masked_greater(dists,d).filled(0.0)/dists
-                    mask[mask==np.nan]=0.0
+        # dots=np.array(dots)
+        # dists=np.array(dists)
+        # distmask=np.ma.masked_invalid(dists)
+        # dots=np.ma.masked_array(dots,mask=distmask.mask).compressed()
+        # dists=distmask.compressed()
+        # if isinstance(kIce,list) == True:
+        #     ### Compute Extinction Coefficient for ALL wavelenghts
+        #     kExt=[]
+        #     for kdx, k in enumerate(kIce):
+        #         for ddx, d in enumerate(distances):
+        #             mask=np.ma.masked_greater(dists,d).filled(0.0)/dists
+        #             mask[mask==np.nan]=0.0
 
-                    ZeroInds=np.where(mask == 0)
-                    ZeroInds=np.squeeze(ZeroInds)
+        #             ZeroInds=np.where(mask == 0)
+        #             ZeroInds=np.squeeze(ZeroInds)
 
-                    NowDots=dots[ZeroInds]
-                    Absorb=np.ma.masked_less_equal(NowDots,0).filled(0.0)
-                    Absorb[Absorb !=0.0]=1.-np.exp(-k * d)
-                    #Absorb[:]=0.0
-                    mask[ZeroInds]=Absorb
+        #             NowDots=dots[ZeroInds]
+        #             Absorb=np.ma.masked_less_equal(NowDots,0).filled(0.0)
+        #             Absorb[Absorb !=0.0]=1.-np.exp(-k * d)
+        #             #Absorb[:]=0.0
+        #             mask[ZeroInds]=Absorb
 
-                    extinction[ddx]= np.nanmean(mask)
+        #             extinction[ddx]= np.nanmean(mask)
 
-                distances=np.array(distances)
-                popt, pcov = curve_fit(CurveFit, distances,extinction,p0=(1.5))
-                kExt.append(popt[0])
+        #         distances=np.array(distances)
+        #         popt, pcov = curve_fit(CurveFit, distances,extinction,p0=(1.5))
+        #         kExt.append(popt[0])
 
-        else:
-            for ddx, d in enumerate(distances):
-                mask=np.ma.masked_greater(dists,d).filled(0.0)/dists
-                mask[mask==np.nan]=0.0
+        # else:
+        #     for ddx, d in enumerate(distances):
+        #         mask=np.ma.masked_greater(dists,d).filled(0.0)/dists
+        #         mask[mask==np.nan]=0.0
 
-                ZeroInds=np.where(mask == 0)
-                ZeroInds=np.squeeze(ZeroInds)
+        #         ZeroInds=np.where(mask == 0)
+        #         ZeroInds=np.squeeze(ZeroInds)
 
-                NowDots=dots[ZeroInds]
-                Absorb=np.ma.masked_less_equal(NowDots,0).filled(0.0)
-                Absorb[Absorb !=0.0]=1.-np.exp(-kIce * d)
-                #Absorb[:]=0.0
-                mask[ZeroInds]=Absorb
+        #         NowDots=dots[ZeroInds]
+        #         Absorb=np.ma.masked_less_equal(NowDots,0).filled(0.0)
+        #         Absorb[Absorb !=0.0]=1.-np.exp(-kIce * d)
+        #         #Absorb[:]=0.0
+        #         mask[ZeroInds]=Absorb
 
-                extinction[ddx]= np.nanmean(mask)
+        #         extinction[ddx]= np.nanmean(mask)
 
 
             distances=np.array(distances)
             extinction=np.array(extinction)
 
-            popt, pcov = curve_fit(CurveFit, distances,extinction,p0=(1.5))
-            kExt = popt[0]
+            # popt, pcov = curve_fit(CurveFit, distances,extinction,p0=(1.5))
+            # kExt = popt[0]
+            kExt = 1./(mfp/nPhotons)
 
-    return popt,kExt,distances,extinction,bad
+    return kExt,distances,extinction,bad
 
 def CurveFit(x,ke):
     """This function defines the function used to curve fit the extinction coefficient"""
