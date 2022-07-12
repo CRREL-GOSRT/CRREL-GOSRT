@@ -781,7 +781,6 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
     while inSnow:
         if TIRbounce > MaxTIRbounce: ## This takes care of total internal reflection bounce criteria
             inSnow=False
-
             ## You've done the max number of bounces allowed, leave!
             break
         if bounce > maxBounce: ## This takes care of total internal reflection bounce criteria
@@ -841,6 +840,25 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                     ice = True
                 else:
                     ice = False
+                    if particle == True and PhaseWeight > 0.1:
+                        ## Do up-to 3 more bounces for the internal scattering if more than 10% of the particle energy is left?
+                        for pdx in range(5):
+                            pSource = np.array(intersectionPt) + 1e-3 * v_i_ref
+                            pTarget = np.array(intersectionPt) + 3.0 * v_i_ref ##small to avoid computations.
+                            intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
+                                                                                                    obbTree, normalsMesh,True,first=first)
+
+                            v_n = np.array(normalMeshIntersection).squeeze()
+                            v_n=-v_n
+                            v_i_ref, v_i_tran, reflect_init,transmiss_init = Fresnel(nIce, nAir, v_i_ref, v_n,polar=polar)
+
+                            COSPHI=np.dot(incidentParticle,v_i_tran)
+                            COSPHIS.append(COSPHI)
+                            weights.append(transmiss_init*PhaseWeight)
+                            PhaseWeight = PhaseWeight * (1. - transmiss_init)  #energy left is whatever is relfected!
+                            if PhaseWeight < 0.01: #break if it's less than 1%
+                                break
+
                     ## IF you are computing phase function as a particle, AND You are starting in ice, the
                     ## scattered angle is THEN the scattered angle transmitting out of the
 

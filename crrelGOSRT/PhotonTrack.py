@@ -257,12 +257,14 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
     ### Now write the data out to a file!
     today=datetime.now().strftime('%c')
+    ## Compute B parameter from Fice
+    B=np.nanmean(Fice)/np.nanmean(Fice_Straight)
     with open(OutputFilename, 'w') as file:
        file.write("Optical Properties File Created From %s \n"%VTKFilename)
        file.write("Mesh Description: %s"%SnowMesh.description)
 
 
-       print('B Parameter: %.3f'%(np.nanmean(Fice)/np.nanmean(Fice_Straight)))
+       print('B Parameter: %.3f'%(B))
 
        file.write("File Created on %s \n"%today)
        file.write("Central Wavelength and refractive index: %s, %.2f \n"%(wavelen,nIce))
@@ -288,10 +290,10 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Median fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmedian(Fice))
        file.write("Standard Deviation fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanstd(Fice))
 
-       file.write("Mean Absorption Enhancment Parameter (B) = %.3f \n"%(np.nanmean(Fice)/np.nanmean(Fice_Straight)))
+       file.write("Mean Absorption Enhancment Parameter (B) = %.3f \n"%(B))
        file.write("B estimated from Fice and Density B = %.3f \n"%((np.nanmean(Fice)-917./Density*np.nanmean(Fice))/(np.nanmean(Fice)-1)))
 
-       file.write("Absorption scale (eta) =%.2f"%((1.+(B-1.)*Density/917.0)))
+       file.write("Absorption scale (eta) =%.2f\n"%((1.+(B-1.)*Density/917.0)))
        file.write("Number of bins in phase function = %i \n"%PhaseBins)
        file.write("Angular Bin Size (radians) = %.5f"%dtheta)
        file.write("------------------------------------------------------  \n")
