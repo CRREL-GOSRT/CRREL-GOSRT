@@ -710,7 +710,7 @@ def TracktoAbsStraight(pSource,pTarget,nIce,normalsMesh,obbTree,
 
 
 def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
-        nAir=1.00003,raylen=1000,polar=0,maxBounce=100,particle=True):
+        nAir=1.00003,raylen=1000,polar=0,maxBounce=100,particle=True,MaxTIRbounce=30):
 
     """
     This function is essentially the Kaempfer model only without absorption.  In essence, this function initializes
@@ -726,13 +726,20 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
         nAir - (float: optional) refractive index of air
         raylen - (float: optional) how far to cast ray in search of intersections (mm)
         polar - (float: optional / developmental) flag that allows for the ray to be either horizontally or vertically polarized
-        maxBounce - (int: optional) cuts of photon tracking after this number of bounces.  Can significantly reduce computational expense
+        maxBounce - (int: optional) Cuts off photon tracking after this number of bounces.  Can significantly reduce computational expense
         particle - (bool: optional) Computes phase function by comparing scattering angles when air/ice phase are different
+
+        MaxTIRbounce (int: optional) Cuts off photon tracking after this number of consecutive total-internal-reflections.
+                                     Reduces computational expense caused by TIR loops
 
     Returns:
         TotalIceLength - (float) total distance (mm) traveled within the ice
         TotalLength - (float) total distance (mm) traveled combined ice/air
         intersections - (array [nBounces, 3]) array containing location of all intersections, can be useful for debugging.
+        weights - (array) contains total weights for the computation of the phase function to be applied to COSPHIS
+        COSPHIS - (array) contains the scattering angles used to build the scattering phase function
+        Fice_Straight (array) contains the fractional ice path along a straight chord through the medium.
+                                Used in the computation of the B parameter.
     """
 
     inSnow = True ## yes, we are in the space.
@@ -740,6 +747,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
 
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
+    pTarget1 = pSource + pDir * 1000. ## need a long ray-length for the straight chord used in Fice_straight
 
     intersections = np.reshape(np.array(pSource), (1,3))
 
@@ -753,7 +761,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
     COSPHIS=[]
 
 
-    distances,normals, isHit = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+    distances,normals, isHit = castRayAll(pSource,pTarget,obbTree, normalsMesh)
     TotalLength=np.sum(distances)
 
     if particle == True:
@@ -771,15 +779,11 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
     TotalIceLength=0
     TotalLength=0
     while inSnow:
-        #if TIRbounce > 35: ## This takes care of total internal reflection bounce criteria
-            #inSnow=False
-            #TotalLength+=((-np.log(0.8)/kIce)-TotalIceLength)
-            #TotalIceLength+=((-np.log(0.8)/kIce)-TotalIceLength)
-
+        if TIRbounce > MaxTIRbounce: ## This takes care of total internal reflection bounce criteria
+            inSnow=False
 
             ## You've done the max number of bounces allowed, leave!
-        #    pass
-            #break
+            break
         if bounce > maxBounce: ## This takes care of total internal reflection bounce criteria
             inSnow=False
             ## You've done the max number of bounces allowed, leave!
@@ -873,14 +877,12 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
             break
 
         Fice_Convoluted = TotalIceLength/TotalLength
-        Bparam=Fice_Convoluted/Fice_Straight
-
 
     return TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fice_Straight
 
 
 def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
-        nAir=1.00003,raylen=1000,polar=0,maxBounce=100):
+        nAir=1.00003,raylen=1000,polar=0,maxBounce=100,MaxTIRbounce=30):
     """
     This function is essentially the Kaempfer model only without absorption.  In essence, this function initializes
     a photon with a location/direction and tracks it within the mesh until it exits the mesh or undergoes more bounces than max bounce.
@@ -895,21 +897,26 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
         nAir - (float: optional) refractive index of air
         raylen - (float: optional) how far to cast ray in search of intersections (mm)
         polar - (float: optional / developmental) flag that allows for the ray to be either horizontally or vertically polarized
-        maxBounec - (int: optional) cuts of photon tracking after this number of bounces.  Can significantly reduce computational expense
-
+        maxBounce - (int: optional) cuts of photon tracking after this number of bounces.  Can significantly reduce computational expense
+        MaxTIRbounce (int: optional) Cuts off photon tracking after this number of consecutive total-internal-reflections.
+                                     Reduces computational expense caused by TIR loops
 
     Returns:
         TotalIceLength - (float) total distance (mm) traveled within the ice
         TotalLength - (float) total distance (mm) traveled combined ice/air
         intersections - (array [nBounces, 3]) array containing location of all intersections, can be useful for debugging.
+        Fice_Straight (array) contains the fractional ice path along a straight chord through the medium.
+                                Used in the computation of the B parameter.
+        first_path_length (float) - length of path to first intersection (mm)
     """
+    TotalIceLength,TotalLength,intersections,Fice_Straight,first_path_length
 
     inSnow = True ## yes, we are in the space.
     ice = True #No we are not in Ice to start.
 
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
-
+    pTarget1 = pSource + pDir * 1000.  ## need long raylength to compute Fice along a straight chord.
     intersections = np.reshape(np.array(pSource), (1,3))
 
     TotalIceLength=0
@@ -917,24 +924,19 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
     first_path_length = 0
     bounce=0
     TIRbounce=0
-    first=True
 
-    computeB = True
-    Bparam=-9999
-    if computeB == True:
-        ## Quick get F_ice for strange launch!
-        distances,normals, isHit,inters = castRayAll(pSource, pTarget,obbTree, normalsMesh)
+    distances,normals, isHit,inters = castRayAll(pSource, pTarget1,obbTree, normalsMesh)
+    TotalLength=np.sum(distances)
+
+    if isHit ==True:
         TotalLength=np.sum(distances)
-
-        if isHit ==True:
-            TotalLength=np.sum(distances)
-            TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
-            Fice_Straight=TotalIceLength/TotalLength
-        else:
-            Fice_Straight=0.0
+        TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
+        Fice_Straight=TotalIceLength/TotalLength
+    else:
+        Fice_Straight=0.0
 
     while inSnow:
-        if TIRbounce > 4: ## This takes care of total internal reflection bounce criteria
+        if TIRbounce > MaxTIRbounce: ## This takes care of total internal reflection bounce criteria
             inSnow=False
 
             ## You've done the max number of bounces allowed, leave!
@@ -977,12 +979,10 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                     ice = False
 
                 TotalIceLength+=ptsDistance(pSource, intersectionPt)
-                if first == True:
-                    first = False
-                    
+
                 if bounce ==1:
                     first_path_length = ptsDistance(pSource, intersectionPt)
-                    
+
 
             ## Get Reflected/Transmitted Weights Amount ##
             TotalLength+=ptsDistance(pSource, intersectionPt)
@@ -996,13 +996,8 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             inSnow = False
             break
 
-        Fice_Convoluted = TotalIceLength/TotalLength
-        if computeB == True:
-            Bparam=Fice_Convoluted/Fice_Straight
-        else:
-            Bparam=-9999
 
-    return TotalIceLength,TotalLength,intersections,Bparam,first_path_length
+    return TotalIceLength,TotalLength,intersections,Fice_Straight,first_path_length
 
 
 def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',

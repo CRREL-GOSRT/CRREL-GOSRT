@@ -15,14 +15,27 @@ import os
 def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,MaterialPath,wavelen,VoxelRes,
                                  nPhotons=1500,Absorb=True,GrainSamples=40,maxBounce=100,PhaseBins=180,
                                  verbose=False,distScale=1.2,VoxelUnits='um',wavelenUnits='nm',plot=True,
-                                 phaseSmooth=300,
-                                 Advanced = True,TrackThresh=0.1,TrackDepthMax=4,straight=False,
-                                 Multi = False, Polar = False,FiceFromDensity=False,particlePhase=True,AirOnly=False,
-                                 ComputeB=True,Tolerance = 0.001,MeshDescription='Snow Mesh'):
+                                 phaseSmooth=300,raylen=2000,PF_fromSegmentedParticles=False,
+                                 Advanced = True,TrackThresh=0.1,TrackDepthMax=4,
+                                 Polar = False,particlePhase=True,AirOnly=False,
+                                 Tolerance = 0.001,MeshDescription='Snow Mesh'):
 
     """
         This function calls individual sub-functions to get optical properties and saves them to file for
         1D spectral albedo model:
+
+        Version 0.3.0 --> Major updates to the code to reflect the replacement of the Xiong et al. (2015) method for computing the extiction
+                          coefficient with the method described in Randrianaliosa and Baillis (2010) method that uses the mean free-path
+                          through explicit ray-tracing.
+
+                        Key Updates:
+                          - Compute extinction function is no longer called as part of the ray-trace
+                          - Computing the B parameter is no longer an option, instead it is required and used in the slab model.
+
+                        Minor Updates:
+                          - Removed options to compute Fice from density
+                          - Added option for user to set raylen, can speed up the code if the ray doesn't span the entire sample, however could potentially miss intersections this way.
+                          - Added optino for the user to specify the tolerance for idenifying intersections in the mesh.  Should be no greater than 0.005.
 
         Version 0.2.1 --> Some bug fixes and code cleaning has been performed (September 2021)
             - Key Updates:
@@ -67,6 +80,12 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                              3. Histogram of F_{ice}
                              4. Scattering Phase Function
 
+            phaseSmooth (optional): Number of iterations to use in smoothing function to refine the mesh prior to running the model.
+            raylen (optional): distance (mm) to fire a ray.  Should be long enough to ensure it will either hit a particle, or traverse the sample.
+
+            PF_fromSegmentedParticles (optional / boolean) : If True will look for segmented individual particles in the folder specified by "GrainFolder"
+                                                             Note that this will change how some of the other aspects of the optical properties are computed.
+
             Advanced (optional): If True, allows for multiple interactions with an irregularly shaped particle.
             Specifically, photons that exit the particle with remaining energy greater than some threshold are checked for re-intersections with the particle.
             Any reintersections are subsequently tracked.  Can be particularly useful for hollow facets or other hollow particles where reintersections are likely.
@@ -77,27 +96,15 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
             TrackDepthMax (optional): Maximum number of times ("depths") for which to track for reinterections.
                 Generally, most particles will go less than 3 reintersections before running out of steam, but this allows for a hard limit.
 
-            straight (optional): if True computes F_{ice} by assuming a straight ray (not reccomended, but can speed up computational time.)
-
             !------------------------------------------------------------------------------------------------!
             Developmental Options (Note, these are not rigorously tested, and should not be used in operation)
             !------------------------------------------------------------------------------------------------!
 
-            Multi (optional/developmental): Boolean flag to turn on the use of pvistas "vectorized" ray casting in the extinction coefficient and F_{ice}
-                                            calculations.  Should lead to speed up, but doesn't quite yield the same answers as the tested sequential versions.
-                                            This also requires additional libraries to be installed prior to use, and a modification to the Pyvista python code,
-                                            so it is not recommended for use at this time -> see: https://docs.pyvista.org/user-guide/optional_features.html
-                                            for more information
+
 
             Polar (optional/developmental): Adds polarization to the scattering phase function calculation.
                                             Currently, no polarization data is actually saved to the output data file,
                                             but can be used to look at linear polarization of a specific particle shape by plotting.
-
-            FiceFromDensity (optional/developmental): Boolean Flag (True/False).  Because the computation from Fice runs a version of the Kaempfer et al. 2007 model,
-                                                      it requires the most time to run.  Fice is also very strongly correlated to sample density (Letcher et al. 2021)
-                                                      So, this option allows users to skip running the Kaemfer model, and simply set Fice according to sample density.
-                                                      Setting this to True this can save 1-2 hours of run time for a given simulation, but then the ray-tracing is run
-                                                      for this option.
 
 
             Tolerance (float) - Tolerance used in vtk.obbTree to determine how close a ray needs to be to a mesh "cell" to
@@ -119,7 +126,8 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     #VTKFilename=GrainFiles[1]
 
     ## Perform initial checks ##
-    assert len(GrainFiles) > 0, "There are no Grain Files in %s, I cannot compute the phase function without grain files."%GrainFolder
+    if PF_fromSegmentedParticles == True:
+        assert len(GrainFiles) > 0, "There are no Grain Files in %s, I cannot compute the phase function without grain files when PF_fromSegmentedParticles == True."%GrainFolder
     assert len(VTKfile) > 0, "There is no VTK Mesh file with the name %s.  I cannot compute the optical properties without a mesh file."%VTKFilename
 
     ## put a print statement here.
@@ -130,7 +138,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
     ## Get SnowMesh
     SnowMesh,sampleVolumeOut,Density,SSA,GrainDiam=ReadMesh(VTKFilename,VoxelRes_mm,verbose=verbose,
-                                                            Tolerance=Tolerance,description=MeshDescription)
+                                                            Tolerance=Tolerance,description=MeshDescription,smooth=phaseSmooth)
 
     print("Finished loading mesh ... ")
     SnowMesh.AssignMaterial('ice',filePath=MaterialPath)  ##Assign Material
@@ -152,11 +160,6 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         nIce,kIce,Nc=SnowMesh.GetRefractiveIndex(wavelen,units=wavelenUnits)
 
 
-    ## Get Extinction Coefficient... ##
-    time1=datetime.now()
-    kExt,distances,extinction,bad=ComputeExtinction(SnowMesh,distances,kIce,nIce,nPhotons,Multi=Multi,verbose=verbose,AirOnly=AirOnly)
-    time2=datetime.now()
-
     text="SSA = %.1f m^2/kg \nrho_s = %.1f kg/m^3 \nSample Vol = %.1f mm^3"%(SSA,Density,sampleVolumeOut)
 
     if plot == True:
@@ -170,54 +173,45 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         perspective = plotter.show(screenshot=True)  ### this is returning a NoneType object for me, causing issue with subplot 2,2,2 below
 
 
+
+
+
+    ## Next Up, F_Ice and PhaseFunction
+    ###
+    time1=datetime.now()
+    if PF_fromSegmentedParticles == True:
+        Fice,Fice_Straight,TotalLengths,kExt,missed=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
+                                              straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase,raylen = raylen)
+    else:
+        Fice,TotalLengths,POWER,thetas,Fice_Straight,kExt,missed=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
+                                              straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase,raylen = raylen)
+
+        bins=np.linspace(0,np.pi,PhaseBins)
+        dtheta=np.abs(bins[1]-bins[0])
+        asymmparam = 0.5*dtheta*np.sum(np.cos(thetas)*np.sin(thetas)*POWER)
+
+    print("Found F_{ice} = %.2f after %.1f seconds"%(np.nanmean(Fice),(time2-time1).total_seconds()))
+    print("Found k_{ext} = %.2f"%(kExt))
+    print("Total Missed Photons =%i --> %.3f percent of all photons"%(missed,100.*missed/nPhotons))
+    print("------------------------------------")
+
+    #####
+
+    if plot == True:
+
         fig=plt.figure(figsize=(9,9))
         ax=fig.add_subplot(2,2,1)
-        # ax.scatter(distances,extinction,label='POE')
-        # ax.plot(distances, CurveFit(distances, *popt), 'r-',label='fit: Ke=%.2f' % (popt[0]))
         ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='1/mfp')
-        # ax.legend()
         ax.set_ylabel("POE")
         ax.set_xlabel("$d$ (mm)")
         plt.title("Curve fit for $\gamma_{ext}$")
         ax.grid()
 
         ax=fig.add_subplot(2,2,2)
-        # ax.imshow(perspective)  ## commented for now until we debug perspective variable
+        ax.imshow(perspective)  ## commented for now until we debug perspective variable
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 
-
-    print("Found Extinction Coefficient = %.2f after %.1f seconds"%(kExt,(time2-time1).total_seconds()))
-    print("Total Bad Photons =%i --> %.3f percent of all photons"%(bad,len(distances)*100.*bad/nPhotons))
-    print("------------------------------------")
-
-    ## Next Up, F_Ice and PhaseFunction
-    ###
-    time1=datetime.now()
-    if FiceFromDensity == False:
-        if particlePhase == True:
-            Fice, TotalLengths,missed=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
-                                                  straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase)
-        else:
-            Fice,TotalLengths,missed,POWER,thetas,Bparams=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
-                                                  straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase)
-
-            bins=np.linspace(0,np.pi,PhaseBins)
-            dtheta=np.abs(bins[1]-bins[0])
-            asymmparam = 0.5*dtheta*np.sum(np.cos(thetas)*np.sin(thetas)*POWER)
-
-    else:
-        print("WARNING, Fice Computed from density, not ray-tracing!")
-        Fice, missed = 0.00074*Density + 0.25, 0.0
-    time2=datetime.now()
-
-    print("Found F_{ice} = %.2f after %.1f seconds"%(np.nanmean(Fice),(time2-time1).total_seconds()))
-    print("Total Missed Photons =%i --> %.3f percent of all photons"%(missed,100.*missed/nPhotons))
-    print("------------------------------------")
-
-    #####
-
-    if plot == True and FiceFromDensity == False:
         ax=fig.add_subplot(2,2,3)
         ax.hist(np.array(Fice),edgecolor='k')
         ax.axvline(np.nanmean(Fice),color='r',lw=2.0,ls='--')
@@ -227,17 +221,12 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         plt.title("Histogram of $F_{ice}$",loc='left')
 
 
-    print(np.nanmean((np.array(Fice)-917./Density*np.array(Fice))/(np.array(Fice)-1)))
-    print(np.nanmedian((np.array(Fice)-917./Density*np.array(Fice))/(np.array(Fice)-1)))
-
-
-
-    if particlePhase == True:
+    if PF_fromSegmentedParticles == True:
         print("Computing Scattering Phase Function using %s Grain Samples..."%GrainSamples)
 
         time1=datetime.now()
         POWER,thetas,PhaseText,dtheta,ScatAlb=ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMesh,nIce,kIce,
-                                                          VoxelRes_mm,verbose=verbose,Absorb=Absorb,smooth=phaseSmooth)
+                                                          VoxelRes_mm,verbose=verbose,Absorb=Absorb)
 
         ## need multi-stuff here! ##
         Ka=np.array(kExt)*(1.-np.array(ScatAlb))
@@ -248,58 +237,40 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         print("------------------------------------")
 
     else:
-        Ka=np.nan
+        Ka = Density/917.0*(np.nanmean(Fice)/np.nanmean(Fice_Straight))*kIce
         dtheta=np.nanmean(np.gradient(thetas))
-        PhaseText='Computed at Boundaries!'
-        ScatAlb=np.nan
+        PhaseText='Phase function computed within sample mesh '
+        if particlePhase == True:
+            PhaseText+='assuming scattering angles are computed between air->ice phase incident angles and exiting photons, \nreplicating whole particle scattering within the medium'
+        else:
+            PhaseText+='along particle boundaries, replicating the localized phase function (e.g., Xiong et al. 2015)'
+        ScatAlb=1.-4.*(np.nanmean(Fice)/np.nanmean(Fice_Straight))*kIce/(917.0*SSA)
 
     ### Now write the data out to a file!
     today=datetime.now().strftime('%c')
     with open(OutputFilename, 'w') as file:
        file.write("Optical Properties File Created From %s \n"%VTKFilename)
        file.write("Mesh Description: %s"%SnowMesh.description)
-       if isinstance(kIce,list) == True:
-           OutputFileMulti=OutputFilename.split('.txt')[0]+'_ExtAbso.txt'
-           print("Saving wavelength dependent optical properties to: %s"%OutputFileMulti)
-           print("Note, that kExt, kAbs, and Phase function in the main output file are for the middle wavelength")
-           file.write("!!! Addtional wavelength dependent properties are computed and stored in:%s !!!\n"%OutputFileMulti)
-           wvIdx=int(len(kIce)/2)
-           wavelen_i0 = wavelen[wvIdx]
-           kExt_i0=kExt[wvIdx]
-           if particlePhase == True:
-               Ka_i0=Ka[wvIdx]
-               ScatAlb_i0=ScatAlb[wvIdx]
-           else:
-               Ka_i0=np.nan
-               ScatAlb_i0=np.nan
+
+       kExt_i0=kExt
+       wavelen_i0 = wavelen
+       if PF_fromSegmentedParticles == True:
+           Ka = Ka
+           ScatAlb_i0 = ScatAlb
        else:
-           kExt_i0=kExt
-           wavelen_i0 = wavelen
-           if particlePhase == True:
-               Ka_i0 = Ka
-               ScatAlb_i0 = ScatAlb
-           else:
-               ScatAlb_i0 = np.nan
-               Ka_i0 = np.nan
+           ScatAlb_i0 = np.nan
+           Ka_i0 = np.nan
 
-       #plt.figure()
-       #plt.hist(np.array(Bparams))
-       #plt.show()
-       #sys.exit()
-
-       if particlePhase == False:
-           print('B Parameter: %.23f'%(np.nanmean(Fice)/np.nanmean(Bparams)))
+       print('B Parameter: %.3f'%(np.nanmean(Fice)/np.nanmean(Fice_Straight)))
 
        file.write("File Created on %s \n"%today)
        if Multi == True:
            file.write("WARNING: Vectorized ray-casting through pyvista was used to generated k_ext and F_{ice}!\n")
        file.write("Central Wavelength and refractive index: %s, %.2f \n"%(wavelen_i0,nIce))
        file.write("Number of Photons used in Monte Carlo Sampling: %i \n"%nPhotons)
-       if FiceFromDensity == True:
-           file.write("WARNING: F_{ice} computed using linear regression formula: Fice = 0.00074*rho_{s} + 0.25 instead of ray-tracing!\n")
-       if Advanced == True and particlePhase == True:
+       if Advanced == True and PF_fromSegmentedParticles == True:
            file.write("Advanced photon-tracking that allows for multiple re-intersections with the particle was used!\n")
-       if particlePhase == False:
+       if PF_fromSegmentedParticles == False:
            file.write("!!! Phase Function Computed for boundary (instead of whole particle) scattering !!!\n")
            file.write("!!! This is similar to Xiong et al., 2015. !!!\n")
            file.write("!!! Accordingly, Single Scattering Albedo, Asymmetry Parameter and Absorption Coefficient are not calculated. !!!\n")
@@ -313,16 +284,13 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Estimated Asymmetry Parameter (g) = %.2f (-) \n"%asymmparam)
        file.write("Estimated Single Scattering Albedo = %.2f (-)\n"%np.nanmean(ScatAlb_i0))
        file.write("Estimated Absorption Coefficient = %.6f (mm^{-1})\n"%Ka_i0)
-       if FiceFromDensity == False:
-           file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmean(Fice))
-           file.write("Median fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmedian(Fice))
-           file.write("Standard Deviation fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanstd(Fice))
-           if particlePhase == False:
-               file.write("Mean Absorption Enhancment Parameter (B) = %.3f \n"%(np.nanmean(Fice)/np.nanmean(Bparams)))
-               file.write("B estimated from Fice and Density B = %.3f \n"%((np.nanmean(Fice)-917./Density*np.nanmean(Fice))/(np.nanmean(Fice)-1)))
-               file.write("B other way estimated from Fice and Density B = %.3f \n"%(np.nanmean((np.array(Fice)-917./Density*np.array(Fice))/(np.array(Fice)-1))))
-       else:
-           file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%Fice)
+       file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmean(Fice))
+       file.write("Median fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmedian(Fice))
+       file.write("Standard Deviation fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanstd(Fice))
+
+       file.write("Mean Absorption Enhancment Parameter (B) = %.3f \n"%(np.nanmean(Fice)/np.nanmean(Fice_Straight)))
+       file.write("B estimated from Fice and Density B = %.3f \n"%((np.nanmean(Fice)-917./Density*np.nanmean(Fice))/(np.nanmean(Fice)-1)))
+
        file.write("Number of bins in phase function = %i \n"%PhaseBins)
        file.write("Angular Bin Size (radians) = %.5f"%dtheta)
        file.write("------------------------------------------------------  \n")
@@ -331,26 +299,6 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
            file.write("%.4f, %.4f \n"%(thetas[tdx],POWER[tdx]))
 
     print("Optical Properties saved to: %s"%OutputFilename)
-
-    ## YOU HAVE MULTIPLE wavelengths passed to function! -> Save ADDITIONAL file with wavelength dependent extinction / abso coeffs.
-    if isinstance(kIce,list) == True:
-        with open(OutputFileMulti, 'w') as file:
-           file.write("Wavelength Dependent Optical Properties File Created From %s \n"%VTKFilename)
-           if particlePhase == True:
-              header = 'wavelength (nm),Extinction,Single Scattering Albedo,Absorption\n'
-              file.write(header)
-              for idx, i in enumerate(wavelen):
-                  wv=convertStrWave2float(i,outunit='nm')
-                  file.write('%.1f,%.3f,%.9f,%.9f\n'%(wv,kExt[idx],ScatAlb[idx],Ka[idx]))
-           else:
-               header = 'wavelength (nm),Extinction\n'
-               file.write(header)
-               for idx, i in enumerate(wavelen):
-                   wv=convertStrWave2float(i,outunit='nm')
-                   file.write('%.1f, %.3f\n'%(wv,kExt[idx]))
-
-
-
 
 
     if plot == True:
@@ -403,8 +351,8 @@ def ConvertVoxel2mm(resolution,units='um'):
     return Voxel
 
 
-def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbose=False,straight=False,
-                PhaseBins=180,particlePhase=False):
+def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbose=False,
+                PhaseBins=180,particlePhase=False,PF_fromSegmentedParticles=False,raylen = 1000.,TIR=30):
     """Computes the F_{ice} optical property by running a customized version of the
        explicit photon tracking model described in Kaempfer et al., 2007.
 
@@ -425,11 +373,18 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
             PhaseBins (optional:integer) - Number of Bins used in the phase function
             particlePhase (optional:bool) - True: Compute the phase function from a whole particle perspective |
                                             False: Compute phase function at each boundary collision.
-                                            Recommended value is "False", however "True" can be helpful for looking into the
-                                            phase function for idealized of specific particles.
-            ComputeB (optional:bool) - True: This computes the absoprtion enhancment parameter ("B") which quantifies the
-                                             internal pathlength enchancment caused by internal reflections.
-                                       False: Doesn't compute this, but just leave it as true.
+                                            The "whole particle" perspective compares scattering angles during the Fice ray-tracing
+                                            assuming that the incident radiation occurs at an air->ice collision, and the scattered angles are
+                                            for subsequent ice->air collisions until the trace is transmitted out of the particle.
+
+            PF_fromSegmentedParticles (optional:bool) - If true, assumes that the phase function will be computed on individual segmented
+                                                        particles in a different function.  Returns fewer variables.  Note that this is
+                                                        distinct from the "particlePhase" option which computes the phase function as part of
+                                                        this (Fice) function.
+
+            raylen (optional:float) - length of ray (in mm) to use when checking for intersections.  Smaller values may result in faster code, but could miss intersections.
+
+            TIR (optional:int) - Number of total internal reflections to allow within the ice-phase before killing the photon. Helps reduce the effect of TIR loops on computational expense.
 
         Returns:
             Fice - (1D array of length: nPhotons) - Fractional Ice Path
@@ -451,8 +406,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
     TotalLengths=[]
     missed=0
 
-    A=[]
-    H=[]
+    mfp = 0  # mean free path
     for ii in range(nPhotons):
         axis=np.random.randint(0,6) ## Choose random axis (x,y,z)
         if axis == 0: ## If x Axis
@@ -487,21 +441,9 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
         pDir=RTcode.pts2unitVec(p11,p22)
 
         ##Run the photon tracking model through the code!
-        if particlePhase == True:
-            if straight == False:
-                TotalIceLength,TotalLength,intersections,Bparam=RTcode.TracktoAbs(p11,pDir,nIce,normalsMesh,obbTree,
-                        nAir=1.00003,raylen=1000,polar=Polar,maxBounce=maxBounce)
-            else:
-                TotalIceLength,TotalLength,Hgaps,Hice=RTcode.TracktoAbsStraight(p11,pDir,nIce,normalsMesh,obbTree,
-                        nAir=1.00003,raylen=1000)
-
-                if TotalLength > 0:
-                    A += Hice
-                    H += Hgaps
-
-                IReflect=1
-                ExReflect=1
-                Bparam=1
+        if PF_fromSegmentedParticles == True:
+            TotalIceLength,TotalLength,intersections,Fstraight,first_length=RTcode.TracktoAbs(p11,pDir,nIce,normalsMesh,obbTree,
+                    nAir=1.00003,polar=Polar,maxBounce=maxBounce,raylen=raylen,TIRbounce=TIR)
 
         else:
             if ii == 0:
@@ -511,8 +453,8 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
                 binCenters=(bins[:-1]+bins[1:])/2.
                 POWER=np.zeros_like(binCenters)
 
-            TotalIceLength,TotalLength,intersections,weights,COSPHIS,Bparam=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,kIce,normalsMesh,obbTree,
-                    nAir=1.00003,raylen=1000,polar=Polar,maxBounce=maxBounce)
+            TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fstraight=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,kIce,normalsMesh,obbTree,
+                    nAir=1.00003,polar=Polar,maxBounce=maxBounce,particle=particlePhase,raylen=raylen,TIRbounce=TIR)
 
 
             for cdx,c in enumerate(COSPHIS):
@@ -530,192 +472,27 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
                 print("Total percent complete =%.1f | Time Elapsed: %.1f seconds"%(100.*float(ii)/nPhotons,(timeNow-time1).total_seconds()))
 
 
+        mfp += (TotalLength/len(intersections))
         Fice.append(TotalIceLength/TotalLength)
-        Fice_Straight.append(Bparam)
+        Fice_Straight.append(Fstraight)
         TotalLengths.append(TotalLength)
 
-    if particlePhase == True:
-
-        if straight == True:
-            A=np.ma.masked_less_equal(A,SnowMesh.Resolution).compressed()
-            H=np.ma.masked_less_equal(H,SnowMesh.Resolution).compressed()
-            ChordEXT=1./(np.nanmean(A)+np.nanmean(H))
-            print(np.nanmean(A),np.nanmean(H))
-            print("Chord-Length EXT = %.2f"%ChordEXT)
-            print("SSA Chord = %.2f"%(4./((np.nanmean(A)/1000.)*917.)))
-        return Fice,TotalLengths,missed
+    if PF_fromSegmentedParticles == True:
+        kExt = 1./(mfp/nPhotons)
+        return Fice,Fice_Straight,TotalLengths,kExt,missed
 
     else:
         thetas=np.arccos(binCenters)
         N = np.sum(POWER[:])
         dOmega = np.sin(thetas[:])*dtheta*2*np.pi
         POWER=4.*np.pi*POWER[:]/(N*dOmega)
+        kExt = 1./(mfp/nPhotons)
 
-        return Fice,TotalLengths,missed,POWER,thetas,Fice_Straight
-
-def ComputeExtinction(SnowMesh,distances,kIce,nIce,nPhotons,Multi=False,verbose=False,trim=False,AirOnly=False):
-    """Computes the k_{ext} optical property by running a customized version of the
-       curve fitting/ray tracing model described in Xiong et al. (2015):
-
-       Photons are initialized within the sample at random locations and given random trajectories.
-       Photons are launched a specified distance, and if they hit an air/ice boundary the probability of extinction over that distance
-       is 1, otherwise it is zero.  In the special case where there is no interaction, but the distance is traveled within the ice,
-       the probability of extinction is related to the absorption coefficient, yielding a minor wavelength dependence.
-       the extinction coefficient is determined by fitting Beer's law to the extinction probability.
+        return Fice,TotalLengths,POWER,thetas,Fice_Straight,kExt,missed
 
 
-       Inputs:
-            SnowMesh (CRRELPolyData) - CRREL polydata object with 3D mesh
-            distances (array) - Array of specified distances used to sample extinction probabilities
-            kIce (float) - absorption coefficient of ice
-            nPhotons (float) - Number of photons used to compute F_{ice}
 
-            Multi (optiona/developmental) - Uses pyvista's vectorized ray-casting.  In development/not recommended  for use.
-            verbose (optional) - if True, will print out notifications every 5% of model completion.
-
-
-        Returns:
-            popt - Extinction Coefficient determined from curve fit
-            extinction (array) - Probability of extinction at each distance
-            bad - total number of "bad" photons.  Occasionally, something goes wrong with the mesh that causes the ray-casting to crash.
-
-    """
-    time1=datetime.now()
-    print("Finding extinction coefficient for medium...")
-    print("------------------------------------")
-    extinction=np.zeros_like(distances)
-    bad=0
-    percent5=int(0.05*nPhotons)
-    
-    normalsMesh=SnowMesh.GetNormalsMesh()
-    obbTree=SnowMesh.GetObbTree()
-
-    if Multi == True:
-        x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
-        y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
-        z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
-
-        pSource=np.array([[x1[i],y1[i],z1[i]] for i in range(nPhotons)])
-        vectors=np.array([RTcode.pts2unitVec([x1[i],y1[i],z1[i]], [x2[i],y2[i],z2[i]]).squeeze() for i in range(nPhotons)])
-
-        dists,intersections,ind_tri,ind_ray,pvMesh=RTcode.TracktoExt_multi(SnowMesh,pSource,vectors)
-
-        dists=np.ma.masked_invalid(dists).compressed()
-
-        vectors = np.array(vectors)[ind_ray,:]
-        pSource = np.array(pSource)[ind_ray,:]
-        for ddx, d in enumerate(distances):
-            mask=np.ma.masked_greater(dists,d).filled(0.0)/dists
-
-            ZeroInds=np.where(mask == 0)
-            ZeroInds=np.squeeze(ZeroInds)
-
-            Asource=pSource[ZeroInds]
-
-            PP=pv.PolyData(Asource)
-            select = PP.select_enclosed_points(pvMesh,check_surface=False)
-            inds=np.where(select['SelectedPoints'] == 1)
-            mask[ZeroInds][inds]=1.-np.exp(-kIce*d)
-
-            extinction[ddx]= np.nanmean(mask)
-            if ddx%percent5 == 0:
-                if verbose == True:
-                    timeNow=datetime.now()
-                    print("Total percent complete =%.1f | Time Elapsed: %.1f seconds"%(100.*(ddx+1.)/nPhotons,(timeNow-time1).total_seconds()))
-    else:
-        # dists=[]
-        # dots=[]
-        mfp = 0  # mean free path
-        for ii in range(nPhotons):
-            x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
-            y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
-            z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
-
-            p11=[x1,y1,z1]
-            p22=[x2,y2,z2]
-            
-            pDir=RTcode.pts2unitVec(p11, p22)
-            pSource=np.array(p11)
-            # pDir=np.random.uniform(-1,1,3)
-
-            TotalIceLength,TotalLength,intersections,Bparam,first_path_length = RTcode.TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
-                    nAir=1.00003,polar=0,maxBounce=100)
-            
-            mfp += (TotalLength/len(intersections))  # add up mean free paths to divide by nPhotons below
-            # dist,dot=RTcode.TracktoExt(SnowMesh,p11,pDir,raylen=(SnowMesh.xBounds[1]-SnowMesh.xBounds[0]),AirOnly=AirOnly)
-            # except:
-            #     if verbose == True:
-            #         print("Bad Photon! Something weird happened, so I'm skipping this!")
-            #     bad+=1.
-            #     continue
-            # dists.append(dist)
-            # dots.append(dot)
-
-            if ii%percent5 == 0:
-                if verbose == True:
-                    timeNow=datetime.now()
-                    print("Total percent complete =%.1f | Time Elapsed: %.1f seconds"%(100.*(ii+1.)/nPhotons,(timeNow-time1).total_seconds()))
-
-        # dots=np.array(dots)
-        # dists=np.array(dists)
-        # distmask=np.ma.masked_invalid(dists)
-        # dots=np.ma.masked_array(dots,mask=distmask.mask).compressed()
-        # dists=distmask.compressed()
-        # if isinstance(kIce,list) == True:
-        #     ### Compute Extinction Coefficient for ALL wavelenghts
-        #     kExt=[]
-        #     for kdx, k in enumerate(kIce):
-        #         for ddx, d in enumerate(distances):
-        #             mask=np.ma.masked_greater(dists,d).filled(0.0)/dists
-        #             mask[mask==np.nan]=0.0
-
-        #             ZeroInds=np.where(mask == 0)
-        #             ZeroInds=np.squeeze(ZeroInds)
-
-        #             NowDots=dots[ZeroInds]
-        #             Absorb=np.ma.masked_less_equal(NowDots,0).filled(0.0)
-        #             Absorb[Absorb !=0.0]=1.-np.exp(-k * d)
-        #             #Absorb[:]=0.0
-        #             mask[ZeroInds]=Absorb
-
-        #             extinction[ddx]= np.nanmean(mask)
-
-        #         distances=np.array(distances)
-        #         popt, pcov = curve_fit(CurveFit, distances,extinction,p0=(1.5))
-        #         kExt.append(popt[0])
-
-        # else:
-        #     for ddx, d in enumerate(distances):
-        #         mask=np.ma.masked_greater(dists,d).filled(0.0)/dists
-        #         mask[mask==np.nan]=0.0
-
-        #         ZeroInds=np.where(mask == 0)
-        #         ZeroInds=np.squeeze(ZeroInds)
-
-        #         NowDots=dots[ZeroInds]
-        #         Absorb=np.ma.masked_less_equal(NowDots,0).filled(0.0)
-        #         Absorb[Absorb !=0.0]=1.-np.exp(-kIce * d)
-        #         #Absorb[:]=0.0
-        #         mask[ZeroInds]=Absorb
-
-        #         extinction[ddx]= np.nanmean(mask)
-
-
-            distances=np.array(distances)
-            extinction=np.array(extinction)
-
-            # popt, pcov = curve_fit(CurveFit, distances,extinction,p0=(1.5))
-            # kExt = popt[0]
-            kExt = 1./(mfp/nPhotons)
-
-    return kExt,distances,extinction,bad
-
-def CurveFit(x,ke):
-    """This function defines the function used to curve fit the extinction coefficient"""
-    return 1.-np.exp(-ke*x)
-
-
-def ReadMesh(VTKfile,VoxelResolution,Tolerance=0.001,verbose=False,description='Real Snow Mesh'):
+def ReadMesh(VTKfile,VoxelResolution,Tolerance=0.001,verbose=False,description='Real Snow Mesh',smooth=0):
     """Helper function to read in data from a VTK file and format the 3D mesh
        into the CRRELPolyData Format and compute some physical properties for the mesh using pyvista.
 
@@ -754,6 +531,9 @@ def ReadMesh(VTKfile,VoxelResolution,Tolerance=0.001,verbose=False,description='
     sampleVolumeOut=(xBounds[1]-xBounds[0])*(yBounds[1]-yBounds[0])*(zBounds[1]-zBounds[0]) ## in Cubic mm
 
     pvob=pv.wrap(shell)
+    if smooth > 0:
+        pvob = pvob.smooth(n_iter=smooth)
+
     snowMass=pvob.volume/(1000**3)*917.0
 
     cellAreas=pvob.compute_cell_sizes(length=False, area=True, volume=False, progress_bar=False)
@@ -778,7 +558,7 @@ def ReadMesh(VTKfile,VoxelResolution,Tolerance=0.001,verbose=False,description='
 
 def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMesh,nIce,kIce,
                                VoxelRes_mm,verbose=False,Absorb=False,
-                               Advanced = True,TrackThresh=0.1,TrackDepthMax=4,smooth=300):
+                               Advanced = True,TrackThresh=0.1,TrackDepthMax=4):
 
     """ Function that computes scattering phase function from individual snow grains within the medium
         Follows method described in Letcher et al. 2021 (in prep).  Photons are fired at a particle with random directions
@@ -827,7 +607,7 @@ def ComputeScatteringPhaseFunc(PhaseBins,GrainSamples,GrainFiles,nPhotons,SnowMe
         yBounds=tuple(shell.GetBounds()[2:4])
         zBounds=tuple(shell.GetBounds()[4:])
 
-        shell = pv.wrap(shell).smooth(n_iter=smooth)
+
 
         CRRELPD=CRRELPolyData._CRRELPolyData(shell,xBounds,yBounds,zBounds,VoxelRes_mm,917,description='Grain Sample')
 

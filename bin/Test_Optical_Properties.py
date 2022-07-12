@@ -27,16 +27,16 @@ GrainPath='/Users/rdcrltwl/Desktop/PhaseFunctions/Spheres/'
 #parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/CRREL Snow/CRREL_20Feb21/CRREL_newsnowf_20Feb21/VTK/newsnowf_20Feb21_17um_Rec/VOI/Snow/FULL/CRREL_MESH.vtk'
 #GrainPath='/Users/rdcrltwl/Desktop/UVD_microCT/CRREL Snow/CRREL_20Feb21/CRREL_newsnowf_20Feb21/VTK/newsnowf_20Feb21_17um_Rec/VOI/Snow/GRAINS/'
 #OutputName='/Users/rdcrltwl/Desktop/CRRELRTM/OpticalProperties/CRREL_newsnowf_20Feb21/TestProps.txt'
+
+parentPath = '/Users/rdcrltwl/Desktop/Circles/Spheres_1.0_212.0.vtk'
 MaterialPath = '/Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/'
-WaveLength=np.arange(400,1600,25)
-#WaveLength=['%inm'%i for i in WaveLength]
 WaveLength='1000nm'
 VoxelRes='19.88250um'
 
 fig=PhotonTrack.RayTracing_OpticalProperties(parentPath,GrainPath,OutputName,MaterialPath,WaveLength,VoxelRes,
-                                         verbose=True,nPhotons=500,Multi=False,GrainSamples=150,Advanced=True,
-                                         FiceFromDensity=False,straight=False,maxBounce=150,phaseSmooth=0,PhaseBins=180,
-                                         particlePhase=False,AirOnly=False)
+                                         verbose=True,nPhotons=100,Multi=False,GrainSamples=150,Advanced=True,
+                                         maxBounce=150,phaseSmooth=0,PhaseBins=180,
+                                         particlePhase=True,AirOnly=False)
 
 fig.savefig('/Users/rdcrltwl/Desktop/Compacted_Grains.png',dpi=120)
 plt.show()
