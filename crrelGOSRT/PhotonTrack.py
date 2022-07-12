@@ -17,8 +17,8 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                                  verbose=False,distScale=1.2,VoxelUnits='um',wavelenUnits='nm',plot=True,
                                  phaseSmooth=300,raylen=2000,PF_fromSegmentedParticles=False,
                                  Advanced = True,TrackThresh=0.1,TrackDepthMax=4,
-                                 Polar = False,particlePhase=True,AirOnly=False,
-                                 Tolerance = 0.001,MeshDescription='Snow Mesh'):
+                                 Polar = False,particlePhase=True,
+                                 Tolerance = 0.001,MeshDescription='Snow Mesh',MaxTIR=30):
 
     """
         This function calls individual sub-functions to get optical properties and saves them to file for
@@ -114,6 +114,9 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
             MeshDescription (optional/string) - You can add a descriptive name to the mesh that will be passed to the optical file.
 
+            MaxTIR (optional/int) - Number of total internal reflections to allow within the ice-phase before killing the photon.
+                                    Helps reduce the effect of TIR loops on computational expense.
+
         Returns:
             Saves optical properties to the OutputFilename, and returns a figure showing the optical properites
             if plot == false, then the returned figure is "None"
@@ -139,6 +142,11 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     ## Get SnowMesh
     SnowMesh,sampleVolumeOut,Density,SSA,GrainDiam=ReadMesh(VTKFilename,VoxelRes_mm,verbose=verbose,
                                                             Tolerance=Tolerance,description=MeshDescription,smooth=phaseSmooth)
+
+    if str(raylen).lower() == 'auto':
+        raylen = 20.*SSA*Density/4000. ## assume a distance 20 x the theoretical scattering coefficient.
+        print("Auto computing raylen from mesh properties = %.1f"%(raylen))
+
 
     print("Finished loading mesh ... ")
     SnowMesh.AssignMaterial('ice',filePath=MaterialPath)  ##Assign Material
@@ -170,7 +178,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                show_edges=False, opacity=1., color="w",
                diffuse=0.8, smooth_shading=True,specular=0.2)
 
-        perspective = plotter.show(screenshot=True)  ### this is returning a NoneType object for me, causing issue with subplot 2,2,2 below
+        #_,perspective = plotter.show(screenshot=True)  ### this is returning a NoneType object for me, causing issue with subplot 2,2,2 below
 
 
 
@@ -181,15 +189,16 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     time1=datetime.now()
     if PF_fromSegmentedParticles == True:
         Fice,Fice_Straight,TotalLengths,kExt,missed=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
-                                              straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase,raylen = raylen)
+                                              PhaseBins=PhaseBins,particlePhase=particlePhase,raylen = raylen,TIR=MaxTIR)
     else:
         Fice,TotalLengths,POWER,thetas,Fice_Straight,kExt,missed=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
-                                              straight=straight,PhaseBins=PhaseBins,particlePhase=particlePhase,raylen = raylen)
+                                              PhaseBins=PhaseBins,particlePhase=particlePhase,raylen = raylen,TIR=MaxTIR)
 
         bins=np.linspace(0,np.pi,PhaseBins)
         dtheta=np.abs(bins[1]-bins[0])
         asymmparam = 0.5*dtheta*np.sum(np.cos(thetas)*np.sin(thetas)*POWER)
 
+    time2=datetime.now()
     print("Found F_{ice} = %.2f after %.1f seconds"%(np.nanmean(Fice),(time2-time1).total_seconds()))
     print("Found k_{ext} = %.2f"%(kExt))
     print("Total Missed Photons =%i --> %.3f percent of all photons"%(missed,100.*missed/nPhotons))
@@ -207,10 +216,10 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         plt.title("Curve fit for $\gamma_{ext}$")
         ax.grid()
 
-        ax=fig.add_subplot(2,2,2)
-        ax.imshow(perspective)  ## commented for now until we debug perspective variable
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
+        # ax=fig.add_subplot(2,2,2)
+        # ax.imshow(perspective)  ## commented for now until we debug perspective variable
+        # ax.get_xaxis().set_visible(False)
+        # ax.get_yaxis().set_visible(False)
 
         ax=fig.add_subplot(2,2,3)
         ax.hist(np.array(Fice),edgecolor='k')
@@ -252,21 +261,11 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Optical Properties File Created From %s \n"%VTKFilename)
        file.write("Mesh Description: %s"%SnowMesh.description)
 
-       kExt_i0=kExt
-       wavelen_i0 = wavelen
-       if PF_fromSegmentedParticles == True:
-           Ka = Ka
-           ScatAlb_i0 = ScatAlb
-       else:
-           ScatAlb_i0 = np.nan
-           Ka_i0 = np.nan
 
        print('B Parameter: %.3f'%(np.nanmean(Fice)/np.nanmean(Fice_Straight)))
 
        file.write("File Created on %s \n"%today)
-       if Multi == True:
-           file.write("WARNING: Vectorized ray-casting through pyvista was used to generated k_ext and F_{ice}!\n")
-       file.write("Central Wavelength and refractive index: %s, %.2f \n"%(wavelen_i0,nIce))
+       file.write("Central Wavelength and refractive index: %s, %.2f \n"%(wavelen,nIce))
        file.write("Number of Photons used in Monte Carlo Sampling: %i \n"%nPhotons)
        if Advanced == True and PF_fromSegmentedParticles == True:
            file.write("Advanced photon-tracking that allows for multiple re-intersections with the particle was used!\n")
@@ -280,10 +279,11 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Estimated Sample SSA = %.2f (m^{2} kg^{-1}) \n"%SSA)
        file.write("Estimated Sample Grain Diameter = %.2f (mm) \n"%GrainDiam)
        file.write("Max Number Bounces allowed in phase function and Ice Path Sampling: %i \n"%maxBounce)
-       file.write("Extinction Coefficient = %.4f (mm^{-1}) \n"%(kExt_i0))
-       file.write("Estimated Asymmetry Parameter (g) = %.2f (-) \n"%asymmparam)
-       file.write("Estimated Single Scattering Albedo = %.2f (-)\n"%np.nanmean(ScatAlb_i0))
-       file.write("Estimated Absorption Coefficient = %.6f (mm^{-1})\n"%Ka_i0)
+       file.write("Extinction Coefficient = %.4f (mm^{-1}) \n"%(kExt))
+       file.write("Estimated Geometric Asymmetry Parameter (g) = %.2f (-) \n"%asymmparam)
+       file.write("Estimated Asymmetry Parameter (g) = %.2f (-) \n"%(0.5*(asymmparam+1.)))
+       file.write("Estimated Single Scattering Albedo = %.2f (-)\n"%np.nanmean(ScatAlb))
+       file.write("Estimated Absorption Coefficient = %.6f (mm^{-1})\n"%Ka)
        file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmean(Fice))
        file.write("Median fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmedian(Fice))
        file.write("Standard Deviation fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanstd(Fice))
@@ -291,6 +291,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Mean Absorption Enhancment Parameter (B) = %.3f \n"%(np.nanmean(Fice)/np.nanmean(Fice_Straight)))
        file.write("B estimated from Fice and Density B = %.3f \n"%((np.nanmean(Fice)-917./Density*np.nanmean(Fice))/(np.nanmean(Fice)-1)))
 
+       file.write("Absorption scale (eta) =%.2f"%((1.+(B-1.)*Density/917.0)))
        file.write("Number of bins in phase function = %i \n"%PhaseBins)
        file.write("Angular Bin Size (radians) = %.5f"%dtheta)
        file.write("------------------------------------------------------  \n")
@@ -303,7 +304,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
     if plot == True:
         ax=fig.add_subplot(2,2,4)
-        ax.plot(np.degrees(thetas),POWER,label='%s'%wavelen_i0)
+        ax.plot(np.degrees(thetas),POWER,label='%s'%wavelen)
         #ax.text(5,500,"g = %.2f"%asymmparam,ha='left')
         ax.set_yscale('log')
         ax.set_xlabel("Theta (degrees)")
@@ -443,7 +444,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
         ##Run the photon tracking model through the code!
         if PF_fromSegmentedParticles == True:
             TotalIceLength,TotalLength,intersections,Fstraight,first_length=RTcode.TracktoAbs(p11,pDir,nIce,normalsMesh,obbTree,
-                    nAir=1.00003,polar=Polar,maxBounce=maxBounce,raylen=raylen,TIRbounce=TIR)
+                    nAir=1.00003,polar=Polar,maxBounce=maxBounce,raylen=raylen,MaxTIRbounce=TIR)
 
         else:
             if ii == 0:
@@ -454,7 +455,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
                 POWER=np.zeros_like(binCenters)
 
             TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fstraight=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,kIce,normalsMesh,obbTree,
-                    nAir=1.00003,polar=Polar,maxBounce=maxBounce,particle=particlePhase,raylen=raylen,TIRbounce=TIR)
+                    nAir=1.00003,polar=Polar,maxBounce=maxBounce,particle=particlePhase,raylen=raylen,MaxTIRbounce=TIR)
 
 
             for cdx,c in enumerate(COSPHIS):

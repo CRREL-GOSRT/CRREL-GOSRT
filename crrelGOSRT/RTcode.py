@@ -761,7 +761,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
     COSPHIS=[]
 
 
-    distances,normals, isHit = castRayAll(pSource,pTarget,obbTree, normalsMesh)
+    distances,normals, isHit,intersections = castRayAll(pSource,pTarget,obbTree, normalsMesh)
     TotalLength=np.sum(distances)
 
     if particle == True:
