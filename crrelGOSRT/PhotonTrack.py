@@ -144,7 +144,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                                                             Tolerance=Tolerance,description=MeshDescription,smooth=phaseSmooth)
 
     if str(raylen).lower() == 'auto':
-        raylen = 20.*SSA*Density/4000. ## assume a distance 20 x the theoretical scattering coefficient.
+        raylen = 8.*1./(SSA*Density/4000.) ## assume a distance 20 x the theoretical scattering coefficient.
         print("Auto computing raylen from mesh properties = %.1f"%(raylen))
 
 
@@ -200,7 +200,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
     time2=datetime.now()
     print("Found F_{ice} = %.2f after %.1f seconds"%(np.nanmean(Fice),(time2-time1).total_seconds()))
-    print("Found k_{ext} = %.2f"%(kExt))
+    print("Found k_{sca} = %.2f"%(kExt))
     print("Total Missed Photons =%i --> %.3f percent of all photons"%(missed,100.*missed/nPhotons))
     print("------------------------------------")
 
@@ -210,7 +210,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
         fig=plt.figure(figsize=(9,9))
         ax=fig.add_subplot(2,2,1)
-        ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='1/mfp')
+        ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='$\gamma_{sca}$ = %.2f'%kExt)
         ax.set_ylabel("POE")
         ax.set_xlabel("$d$ (mm)")
         plt.title("Curve fit for $\gamma_{ext}$")

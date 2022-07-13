@@ -854,8 +854,8 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                             dummy,dummy1, GhostNormPt, isHit = castRay(pSource, pTarget,obbTree, normalsMesh,True,first=first)
 
                             if isHit == False:
-                                print("Hmm, this should not be false, either something went wrong or you have a giant snow grain")
-                                print("Either way, I'm just moving on.")
+                                #print("Hmm, this should not be false, either something went wrong or you have a giant snow grain")
+                                #print("Either way, I'm just moving on.")
                                 break
 
                             v_n = -np.array(GhostNormPt).squeeze()
@@ -934,7 +934,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
         Fice_Straight (array) contains the fractional ice path along a straight chord through the medium.
                                 Used in the computation of the B parameter.
         first_path_length (float) - length of path to first intersection (mm)
-        num_scatter_events (int) - Specific to computing the extinction coefficient.  Counts a scattering event as occuring 
+        num_scatter_events (int) - Specific to computing the extinction coefficient.  Counts a scattering event as occuring
                                    on a particle surface, either through reflection off of the surface, or transmission through.
     """
 
