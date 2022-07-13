@@ -144,7 +144,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                                                             Tolerance=Tolerance,description=MeshDescription,smooth=phaseSmooth)
 
     if str(raylen).lower() == 'auto':
-        raylen = 20.*SSA*Density/4000. ## assume a distance 20 x the theoretical scattering coefficient.
+        raylen = 8.*1./(SSA*Density/4000.) ## assume a distance 20 x the theoretical scattering coefficient.
         print("Auto computing raylen from mesh properties = %.1f"%(raylen))
 
 
@@ -200,7 +200,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
     time2=datetime.now()
     print("Found F_{ice} = %.2f after %.1f seconds"%(np.nanmean(Fice),(time2-time1).total_seconds()))
-    print("Found k_{ext} = %.2f"%(kExt))
+    print("Found k_{sca} = %.2f"%(kExt))
     print("Total Missed Photons =%i --> %.3f percent of all photons"%(missed,100.*missed/nPhotons))
     print("------------------------------------")
 
@@ -210,7 +210,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
         fig=plt.figure(figsize=(9,9))
         ax=fig.add_subplot(2,2,1)
-        ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='1/mfp')
+        ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='$\gamma_{sca}$ = %.2f'%kExt)
         ax.set_ylabel("POE")
         ax.set_xlabel("$d$ (mm)")
         plt.title("Curve fit for $\gamma_{ext}$")
@@ -445,7 +445,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
 
         ##Run the photon tracking model through the code!
         if PF_fromSegmentedParticles == True:
-            TotalIceLength,TotalLength,intersections,Fstraight,first_length=RTcode.TracktoAbs(p11,pDir,nIce,normalsMesh,obbTree,
+            TotalIceLength,TotalLength,intersections,Fstraight,first_length,num_scatter_events=RTcode.TracktoAbs(p11,pDir,nIce,normalsMesh,obbTree,
                     nAir=1.00003,polar=Polar,maxBounce=maxBounce,raylen=raylen,MaxTIRbounce=TIR)
 
         else:
@@ -456,7 +456,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
                 binCenters=(bins[:-1]+bins[1:])/2.
                 POWER=np.zeros_like(binCenters)
 
-            TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fstraight=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,kIce,normalsMesh,obbTree,
+            TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fstraight,num_scatter_events=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,kIce,normalsMesh,obbTree,
                     nAir=1.00003,polar=Polar,maxBounce=maxBounce,particle=particlePhase,raylen=raylen,MaxTIRbounce=TIR)
 
 
@@ -474,11 +474,12 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
                 timeNow=datetime.now()
                 print("Total percent complete =%.1f | Time Elapsed: %.1f seconds"%(100.*float(ii)/nPhotons,(timeNow-time1).total_seconds()))
 
-
-        mfp += (TotalLength/len(intersections))
-        Fice.append(TotalIceLength/TotalLength)
-        Fice_Straight.append(Fstraight)
-        TotalLengths.append(TotalLength)
+        if num_scatter_events > 0:
+            mfp += (TotalLength/num_scatter_events)
+        if TotalLength > 0:
+            Fice.append(TotalIceLength/TotalLength)
+            Fice_Straight.append(Fstraight)
+            TotalLengths.append(TotalLength)
 
     if PF_fromSegmentedParticles == True:
         kExt = 1./(mfp/nPhotons)
