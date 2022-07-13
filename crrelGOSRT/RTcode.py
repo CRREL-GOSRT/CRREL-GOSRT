@@ -740,6 +740,9 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
         COSPHIS - (array) contains the scattering angles used to build the scattering phase function
         Fice_Straight (array) contains the fractional ice path along a straight chord through the medium.
                                 Used in the computation of the B parameter.
+        num_scatter_events (int) - Specific to computing the extinction coefficient.  Counts a scattering event as occuring
+                                   on a particle surface, either through reflection off of the surface, or transmission through.
+
     """
 
     inSnow = True ## yes, we are in the space.
@@ -756,6 +759,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
     bounce=0
     TIRbounce=0
     first=True
+    num_scatter_events=0.0
 
     weights=[]
     COSPHIS=[]
@@ -770,7 +774,6 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
 
 
     if isHit ==True:
-        TotalLength=np.sum(distances)
         TotalIceLength=np.sum(np.ma.masked_where(normals<=0,distances).compressed())
         Fice_Straight=TotalIceLength/TotalLength
     else:
@@ -805,14 +808,15 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
             if np.dot(v_i, v_n) < 0: ## you are in AIR!
                 ### IF COMPUTING "particle" SCATTERING -> then THIS IS THE INCIDENT ANGLE! ##
                 if particle == True:
-                    incidentParticle = v_i ## incidentParticle is the incident ray on the particle surface!
-                    PhaseWeight=1.0 ## New phase weight!
+                    incidentParticle = v_i ## incidentParticle is the incident unit-vector ray direction on the particle surface!
+                    PhaseWeight=1.0 ## New phase weight= 100% energy at particle surface.
                 # Assign indices of refraction values
                 n1 = nAir
                 n2 = nIce
                 # Is ray transmitted or reflected?
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
                 if particle == True:
+                    ## If doing "particle" phase function, add reflected energy to phase function!
                     ## add to reflected weight! ##
                     v_i_ref, v_i_tran, reflect_init,transmiss_init = Fresnel(n1, n2, v_i, v_n,polar=polar)
                     COSPHI=np.dot(incidentParticle,v_i_ref)
@@ -821,6 +825,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                     PhaseWeight=PhaseWeight*(1. - reflect_init)
                 if reflected:
                     ice = False
+                    num_scatter_events+=1
                 else:
                     ice = True
             else: ## You are in ice!
@@ -839,17 +844,21 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                 if reflected:
                     ice = True
                 else:
+                    num_scatter_events+=1
                     ice = False
-                    if particle == True and PhaseWeight > 0.1:
-                        ## Do up-to 3 more bounces for the internal scattering if more than 10% of the particle energy is left?
-                        for pdx in range(5):
+                    if particle == True and PhaseWeight > 0.01:
+                        ## Do up-to 20 more bounces for the internal scattering if more than 1% of the particle energy is left?
+                        for pdx in range(20):
                             pSource = np.array(intersectionPt) + 1e-3 * v_i_ref
-                            pTarget = np.array(intersectionPt) + 3.0 * v_i_ref ##small to avoid computations.
-                            intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
-                                                                                                    obbTree, normalsMesh,True,first=first)
+                            pTarget = np.array(intersectionPt) + 4.0 * v_i_ref ##small to avoid computations.
+                            dummy,dummy1, GhostNormPt, isHit = castRay(pSource, pTarget,obbTree, normalsMesh,True,first=first)
 
-                            v_n = np.array(normalMeshIntersection).squeeze()
-                            v_n=-v_n
+                            if isHit == False:
+                                print("Hmm, this should not be false, either something went wrong or you have a giant snow grain")
+                                print("Either way, I'm just moving on.")
+                                break
+
+                            v_n = -np.array(GhostNormPt).squeeze()
                             v_i_ref, v_i_tran, reflect_init,transmiss_init = Fresnel(nIce, nAir, v_i_ref, v_n,polar=polar)
 
                             COSPHI=np.dot(incidentParticle,v_i_tran)
@@ -894,9 +903,8 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
             inSnow = False
             break
 
-        Fice_Convoluted = TotalIceLength/TotalLength
 
-    return TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fice_Straight
+    return TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fice_Straight,num_scatter_events
 
 
 def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
@@ -926,8 +934,9 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
         Fice_Straight (array) contains the fractional ice path along a straight chord through the medium.
                                 Used in the computation of the B parameter.
         first_path_length (float) - length of path to first intersection (mm)
+        num_scatter_events (int) - Specific to computing the extinction coefficient.  Counts a scattering event as occuring 
+                                   on a particle surface, either through reflection off of the surface, or transmission through.
     """
-    TotalIceLength,TotalLength,intersections,Fice_Straight,first_path_length
 
     inSnow = True ## yes, we are in the space.
     ice = True #No we are not in Ice to start.
@@ -939,9 +948,11 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
 
     TotalIceLength=0
     TotalLength=0
+    num_scatter_events=0
     first_path_length = 0
     bounce=0
     TIRbounce=0
+    first = True
 
     distances,normals, isHit,inters = castRayAll(pSource, pTarget1,obbTree, normalsMesh)
     TotalLength=np.sum(distances)
@@ -952,6 +963,9 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
         Fice_Straight=TotalIceLength/TotalLength
     else:
         Fice_Straight=0.0
+
+    TotalIceLength=0
+    TotalLength=0
 
     while inSnow:
         if TIRbounce > MaxTIRbounce: ## This takes care of total internal reflection bounce criteria
@@ -981,6 +995,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                 v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=TIRbounce)
                 if reflected:
                     ice = False
+                    num_scatter_events+=1
                 else:
                     ice = True
 
@@ -995,6 +1010,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
                     ice = True
                 else:
                     ice = False
+                    num_scatter_events+=1
 
                 TotalIceLength+=ptsDistance(pSource, intersectionPt)
 
@@ -1015,7 +1031,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             break
 
 
-    return TotalIceLength,TotalLength,intersections,Fice_Straight,first_path_length
+    return TotalIceLength,TotalLength,intersections,Fice_Straight,first_path_length,num_scatter_events
 
 
 def ParticlePhaseFunction(CRRELPolyData,pSource,pTarget,normalsMesh,obbTree,nIce,kIce,units='um',

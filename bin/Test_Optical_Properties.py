@@ -19,10 +19,10 @@ GrainPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_1/Snow/GRAINS_T
 parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_3redo/Snow/FULL_Bottom/CRREL_MESH.vtk'
 #GrainPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_8_1redo/Snow/FULL/Test_Phase/'
 OutputName='/Users/rdcrltwl/Desktop/Circles/Outputs/Test_07122022_Particle.txt'
-#parentPath='/Users/rdcrltwl/Desktop/Circles/%s'%name
+parentPath='/Users/rdcrltwl/Desktop/Circles/%s'%name
 GrainPath='/Users/rdcrltwl/Desktop/PhaseFunctions/Spheres/'
 
-#parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_3redo/Snow/FULL_Bottom/CRREL_MESH.vtk'
+parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_3redo/Snow/FULL_Bottom/CRREL_MESH.vtk'
 
 #parentPath='/Users/rdcrltwl/Desktop/UVD_microCT/CRREL Snow/CRREL_20Feb21/CRREL_newsnowf_20Feb21/VTK/newsnowf_20Feb21_17um_Rec/VOI/Snow/FULL/CRREL_MESH.vtk'
 #GrainPath='/Users/rdcrltwl/Desktop/UVD_microCT/CRREL Snow/CRREL_20Feb21/CRREL_newsnowf_20Feb21/VTK/newsnowf_20Feb21_17um_Rec/VOI/Snow/GRAINS/'
@@ -36,8 +36,8 @@ VoxelRes='19.88250um'
 fig=PhotonTrack.RayTracing_OpticalProperties(parentPath,GrainPath,OutputName,MaterialPath,WaveLength,VoxelRes,
                                          verbose=True,nPhotons=1500,GrainSamples=150,Advanced=True,
                                          maxBounce=150,phaseSmooth=0,PhaseBins=180,
-                                         particlePhase=False,raylen='auto',PF_fromSegmentedParticles=False,
-                                         MaxTIR=10)
+                                         particlePhase=True,raylen='auto',PF_fromSegmentedParticles=False,
+                                         MaxTIR=5)
 
 fig.savefig('/Users/rdcrltwl/Desktop/Compacted_Grains.png',dpi=120)
 plt.show()
