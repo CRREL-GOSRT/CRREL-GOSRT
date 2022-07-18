@@ -940,7 +940,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
     """
 
     inSnow = True ## yes, we are in the space.
-    ice = True #No we are not in Ice to start.
+    ice = False #No we are not in Ice to start.
 
     pSource=np.array(pSource)
     pTarget = pSource + pDir * raylen
@@ -980,7 +980,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             break
 
         intersectionPt, cellIdIntersection, normalMeshIntersection, isHit = castRay(pSource, pTarget,
-                                                                                obbTree, normalsMesh,ice)
+                                                                                obbTree, normalsMesh,ice,first=first)
 
         if isHit ==True:
             # Incident ray and surface normal vectors
