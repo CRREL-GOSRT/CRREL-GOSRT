@@ -764,7 +764,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
     weights=[]
     COSPHIS=[]
 
-
+    # Calculate Fice along a straight chord through the medium
     distances,normals, isHit,intersections = castRayAll(pSource,pTarget,obbTree, normalsMesh)
     TotalLength=np.sum(distances)
 
@@ -779,6 +779,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
     else:
         Fice_Straight=0.0
 
+    # Begin again and track a realistic photon path as it bounces through the sample
     TotalIceLength=0
     TotalLength=0
     while inSnow:
@@ -800,7 +801,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
             v_n = np.array(normalMeshIntersection).squeeze()
             dist=ptsDistance(pSource, intersectionPt)
             TotalLength+=dist
-            # Check to see if ray if incident ray is inside or outside of dense material
+            # Check to see if incident ray is inside or outside of dense material
             # Assign indices of refraction values
             if first == True:
                 first = False
@@ -878,7 +879,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                 if rand <= POA: #PHOTON = DEAD!
                     break
 
-            ## GET PHASE FUNCTION FOR RELFECTION / TRANSMISSION! ##
+            ## GET PHASE FUNCTION FOR REFLECTION / TRANSMISSION! ##
             if particle == False:
                 v_i_ref, v_i_tran, reflect,transmiss = Fresnel(n1, n2, v_i, v_n,polar=polar)
                 COSPHI=np.dot(v_i,v_i_ref)
@@ -985,7 +986,7 @@ def TracktoAbs(pSource,pDir,nIce,normalsMesh,obbTree,
             # Incident ray and surface normal vectors
             v_i = pts2unitVec(pSource, pTarget).squeeze()
             v_n = np.array(normalMeshIntersection).squeeze()
-            # Check to see if ray if incident ray is inside or outside of dense material
+            # Check to see if incident ray is inside or outside of dense material
             # Assign indices of refraction values
             if np.dot(v_i, v_n) < 0: ## you are in AIR!
                 # Assign indices of refraction values

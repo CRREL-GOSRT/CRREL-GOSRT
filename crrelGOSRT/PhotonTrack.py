@@ -140,15 +140,18 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         print("Voxel Resolution = %.5f mm"%VoxelRes_mm)
 
     ## Get SnowMesh
+    start = datetime.now()
     SnowMesh,sampleVolumeOut,Density,SSA,GrainDiam=ReadMesh(VTKFilename,VoxelRes_mm,verbose=verbose,
                                                             Tolerance=Tolerance,description=MeshDescription,smooth=phaseSmooth)
-
+    end = datetime.now()
+    mesh_read_time = (end-start)
+    
     if str(raylen).lower() == 'auto':
         raylen = 8.*1./(SSA*Density/4000.) ## assume a distance 20 x the theoretical scattering coefficient.
         print("Auto computing raylen from mesh properties = %.1f"%(raylen))
 
-
-    print("Finished loading mesh ... ")
+    
+    print("Finished loading mesh in... ",str(mesh_read_time))
     SnowMesh.AssignMaterial('ice',filePath=MaterialPath)  ##Assign Material
 
     distances=[]
@@ -259,10 +262,9 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     today=datetime.now().strftime('%c')
     ## Compute B parameter from Fice
     B=np.nanmean(Fice)/np.nanmean(Fice_Straight)
-    with open(OutputFilename, 'w') as file:
+    with open(OutputFilename, 'w+') as file:
        file.write("Optical Properties File Created From %s \n"%VTKFilename)
        file.write("Mesh Description: %s"%SnowMesh.description)
-
 
        print('B Parameter: %.3f'%(B))
 
@@ -289,6 +291,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmean(Fice))
        file.write("Median fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmedian(Fice))
        file.write("Standard Deviation fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanstd(Fice))
+
 
        file.write("Mean Absorption Enhancment Parameter (B) = %.3f \n"%(B))
        file.write("B estimated from Fice and Density B = %.3f \n"%((np.nanmean(Fice)-917./Density*np.nanmean(Fice))/(np.nanmean(Fice)-1)))
@@ -399,7 +402,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
 
     """
 
-    print("Running Photon Tracking to Determine F_{ice}...")
+    print("Running Photon Tracking to Determine F_{ice}, Extinction Coefficient, and Phase Function...")
     time1=datetime.now()
     normalsMesh=SnowMesh.GetNormalsMesh()
     obbTree=SnowMesh.GetObbTree()
@@ -410,6 +413,10 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
     missed=0
 
     mfp = 0  # mean free path
+    # for ii in range(nPhotons):
+    #     x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
+    #     y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
+    #     z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
     for ii in range(nPhotons):
         axis=np.random.randint(0,6) ## Choose random axis (x,y,z)
         if axis == 0: ## If x Axis
