@@ -66,13 +66,14 @@ def GetZenith(time,latitude,longitude,elevation,timeformat='%Y-%m-%d_%H:%M:%S'):
 
     return az-90,zen
 
-
+# User-defined information for calculating sun position
 Latitude = 43.8163
 Longitude = -72.2740
 Time = '02-12 15:35'
 Elevation = 553
 TimeFormat='%m-%d %H:%M'
 
+# Compute sun zenith and azimuth angle (in degrees) from lat/lon/time/elevation
 Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
 #%% MicroCT Data Processing
@@ -124,7 +125,7 @@ OutputName = os.path.join(fp.OPT_PROP_OUTPATH,OutputFile)
 start = dt.now()
 # Compute optical properties
 fig=PhotonTrack.RayTracing_OpticalProperties(VTKFilename,GrainPath,OutputName,fp.MATERIAL_PATH,wavelen,VoxelRes,
-                                         verbose=True,nPhotons=500,GrainSamples=30,raylen='auto',Advanced=True,
+                                         verbose=True,nPhotons=1000,GrainSamples=30,raylen='auto',Advanced=True,
                                          maxBounce=120,PF_fromSegmentedParticles=False)
 end = dt.now()
 print("Execution time :", str(end-start))
