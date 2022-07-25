@@ -15,7 +15,7 @@ import os
 def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,MaterialPath,wavelen,VoxelRes,
                                  nPhotons=1500,Absorb=True,GrainSamples=40,maxBounce=100,PhaseBins=180,
                                  verbose=False,distScale=1.2,VoxelUnits='um',wavelenUnits='nm',plot=True,
-                                 phaseSmooth=300,raylen=2000,PF_fromSegmentedParticles=False,
+                                 phaseSmooth=0,raylen=2000,PF_fromSegmentedParticles=False,
                                  Advanced = True,TrackThresh=0.1,TrackDepthMax=4,
                                  Polar = False,particlePhase=True,
                                  Tolerance = 0.001,MeshDescription='Snow Mesh',MaxTIR=30):
