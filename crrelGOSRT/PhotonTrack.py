@@ -24,7 +24,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         This function calls individual sub-functions to get optical properties and saves them to file for
         1D spectral albedo model:
 
-        Version 0.3.0 --> Major updates to the code to reflect the replacement of the Xiong et al. (2015) method for computing the extiction
+        Version 0.3.0 --> Major updates to the code to reflect the replacement of the Xiong et al. (2015) method for computing the extinction
                           coefficient with the method described in Randrianaliosa and Baillis (2010) method that uses the mean free-path
                           through explicit ray-tracing.
 
@@ -35,7 +35,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                         Minor Updates:
                           - Removed options to compute Fice from density
                           - Added option for user to set raylen, can speed up the code if the ray doesn't span the entire sample, however could potentially miss intersections this way.
-                          - Added optino for the user to specify the tolerance for idenifying intersections in the mesh.  Should be no greater than 0.005.
+                          - Added option for the user to specify the tolerance for identifying intersections in the mesh.  Should be no greater than 0.005.
 
         Version 0.2.1 --> Some bug fixes and code cleaning has been performed (September 2021)
             - Key Updates:
@@ -54,13 +54,13 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
             VTKFilename - (string) Path to full 3D snow sample mesh.  Mesh MUST be manifold.
             GrainFolder - (string) Path to folder where individual 3D grain meshes are stored (used in scattering phase function)
             OutputFilename - (string) Full Path to output .txt file that will include the optical properties.
-            MaterialPath - (string) Path to .csv files with refractive indicies for specified materials.  Note, there must be a .csv file with the "Ice" Material
+            MaterialPath - (string) Path to .csv files with refractive indices for specified materials.  Note, there must be a .csv file with the "Ice" Material
             wavelen - (string/float) Wavelength of light used in computing optical properites, optical properties are generally insensitive to wavelength over the allowed range.
                        if this is a string, it will compute the units from the characters within the string, if a float, it will get units from the "wavelenUnits" variable.
             VoxelRes - (string/float) Physical resolution of a voxel. If this is a string, it will compute the units from the characters within the string, if a float, it will get units from the "VoxelUnits" variable.
 
             nPhotons (optional) - Number of photons used to compute optical properties via ray-tracing,  Higher number will be more statistically robust, but more computationally expensive.
-            Absorb (optional) - Boolean flag to determine if absorbtion should be included in the computation of the scattering phase function.  If false, absorption if neglected in this calculation.
+            Absorb (optional) - Boolean flag to determine if absorption should be included in the computation of the scattering phase function.  If false, absorption is neglected in this calculation.
             GrainSamples (optional) - Number of individual grain samples to pull when computing the scattering phase function.
                                       Note, that each grain will be sampled nPhoton number of times
                                       If the number of rendered grains in GrainFolder is less than GrainSamples, then some grains will be sampled multiple times.
@@ -275,10 +275,12 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Number of Photons used in Monte Carlo Sampling: %i \n"%nPhotons)
        if Advanced == True and PF_fromSegmentedParticles == True:
            file.write("Advanced photon-tracking that allows for multiple re-intersections with the particle was used!\n")
-       if PF_fromSegmentedParticles == False:
+       if PF_fromSegmentedParticles == True and particlePhase == False:
            file.write("!!! Phase Function Computed for boundary (instead of whole particle) scattering !!!\n")
            file.write("!!! This is similar to Xiong et al., 2015. !!!\n")
            file.write("!!! Accordingly, Single Scattering Albedo, Asymmetry Parameter and Absorption Coefficient are not calculated. !!!\n")
+       if PF_fromSegmentedParticles == False and particlePhase == True:
+           file.write("Phase function was computed using whole particle approach and mean free path method (Randrianaliosa and Baillis (2010)) \n")
        file.write(PhaseText)
        file.write("Sample Volume = %.2f (mm^{3}) \n"%sampleVolumeOut)
        file.write("Estimated Sample Density = %.2f (kg m^{-3}) \n"%Density)
@@ -295,7 +297,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Standard Deviation fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanstd(Fice))
 
 
-       file.write("Mean Absorption Enhancment Parameter (B) = %.3f \n"%(B))
+       file.write("Mean Absorption Enhancement Parameter (B) = %.3f \n"%(B))
        file.write("B estimated from Fice and Density B = %.3f \n"%((np.nanmean(Fice)-917./Density*np.nanmean(Fice))/(np.nanmean(Fice)-1)))
 
        file.write("Absorption scale (eta) =%.2f\n"%((1.+(B-1.)*Density/917.0)))
@@ -415,10 +417,13 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
     missed=0
 
     mfp = 0  # mean free path
+    # Option to initialize the photon in a random location within the sample
     # for ii in range(nPhotons):
     #     x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
     #     y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
     #     z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
+    
+    # Option to initialize the photon on a mesh edge (can be within either phase)
     for ii in range(nPhotons):
         axis=np.random.randint(0,6) ## Choose random axis (x,y,z)
         if axis == 0: ## If x Axis
@@ -458,6 +463,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
                     nAir=1.00003,polar=Polar,maxBounce=maxBounce,raylen=raylen,MaxTIRbounce=TIR)
 
         else:
+            # first round initialize all the necessary variables
             if ii == 0:
                 bins=np.linspace(0,np.pi,PhaseBins)
                 dtheta=np.abs(bins[1]-bins[0])
@@ -527,7 +533,7 @@ def ReadMesh(VTKfile,VoxelResolution,Tolerance=0.001,verbose=False,description='
             sampleVolumeOut (float) - Total volume bounded by mesh (in mm^3)
             Density (float) - Snow density of the mesh (kg/m^3)
             SSA (float) - Snow Specific Surface Area (m^2/kg)
-            GrainDiam (float) - GrainDiameter computed from SSA (in mm)
+            GrainDiam (float) - Grain Diameter computed from SSA (in mm)
        """
 
 

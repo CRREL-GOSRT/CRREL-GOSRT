@@ -447,7 +447,7 @@ def castRay(pSource, pTarget, obbTree, normalsMesh, inside,first=False):
         pTarget - (3D unit vector) Final location of photon assuming straight line
         obbTree - (vtk object) mesh object that contains information used to find intersections within the ray-tracing
         normalsMesh - (vtk object) mesh normal vectors -> Passed from CRRELPolyData object
-        inside - (bool) flag to determine if the particle intial location is within or outside of the ice, helps ensure correct intersection is used.
+        inside - (bool) flag to determine if the particle initial location is within or outside of the ice, helps ensure correct intersection is used.
         first (optional : bool) flag to determine if this is intial point, if so, it does not check for inside.
 
     Returns:
@@ -666,7 +666,7 @@ def TracktoAbsStraight(pSource,pTarget,nIce,normalsMesh,obbTree,
     This is a special function that is not generally used, but included as part of a legacy test.
     Basically, this function attempts to estimate F_ice by computing the fractional ice-path along a straight ray
     (i.e., no reflection/refraction along the path).  This was added as a means to try and reduce computational expense, and may be useful
-    in the future.  Typically, this function produces LOWER f_ice than the Kaemfer model due to the fact that it eliminates all internal reflections
+    in the future.  Typically, this function produces LOWER f_ice than the Kaempfer model due to the fact that it eliminates all internal reflections
     that can added to the ice-path length.  It is not recommended that this function is used in practice, but it is here anyway, and can be
     accessed by setting the optional variable ("straight") = True in PhotonTrack.RayTracing_OpticalProperties().
 
@@ -719,7 +719,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
 
     Inputs:
         pSource - (3D vector) initial location of photon
-        pDir - (3D unit vector) intial direction of photon travel
+        pDir - (3D unit vector) initial direction of photon travel
         nIce - (float) real part of the refractive index of ice (set from assumed WaveLength)
         normalsMesh - (vtk object) mesh normal vectors -> Passed from CRRELPolyData object
         obbTree - (vtk object) mesh object that contains information used to find intersections within the ray-tracing
