@@ -236,7 +236,6 @@ def isReflected(n1, n2, v_i, v_n,polar=0,TIR=0.0):
         sin2ThetatCrit=0.0
 
     if sin2ThetatCrit <= 1.0:
-        TIR=0
         # Transmitted ray directional cosine
         cosThetat = np.sqrt(1. - sin2Thetat)
         sini = np.sqrt(1. - cosThetai**2.)
@@ -288,17 +287,18 @@ def isReflected(n1, n2, v_i, v_n,polar=0,TIR=0.0):
             # Calculate reflection vector
             v_i_new = v_i + 2 * cosThetai * v_n
             reflected = True
-
+            TIR+=1
         # Transmit photon:
         # ----------------
         else:
             # Calculate transmission vector
             v_i_new = n1 / n2 * v_i + ( n1 / n2 * cosi - cosT ) * v_n
             reflected = False
-
+            TIR = 0.0
             if np.sqrt(np.sum([i**2. for i in v_i_new])) > 1.0001:
                 ## Sometimes, math just doesn't work.
                 print("Transmission BAD UNIT VECTOR!",v_i_new)
+
 
     # Total internal reflectance condition:
     # -------------------------------------
@@ -815,7 +815,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                 n1 = nAir
                 n2 = nIce
                 # Is ray transmitted or reflected?
-                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=TIRbounce)
                 if particle == True:
                     ## If doing "particle" phase function, add reflected energy to phase function!
                     ## add to reflected weight! ##
@@ -829,13 +829,14 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                     num_scatter_events+=1
                 else:
                     ice = True
+                    num_scatter_events+=1
             else: ## You are in ice!
                 # Assign indices of refraction values
                 n1 = nIce
                 n2 = nAir
                 v_n=-v_n
                 # If photon is not absorbed, is photon reflected?
-                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=bounce)
+                v_i_new, reflected,TIRbounce = isReflected(n1, n2, v_i, v_n,polar=polar,TIR=TIRbounce)
                 if particle == True:
                     v_i_ref, v_i_tran, reflect_init,transmiss_init = Fresnel(n1, n2, v_i, v_n,polar=polar)
                     COSPHI=np.dot(incidentParticle,v_i_tran)
@@ -845,7 +846,7 @@ def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
                 if reflected:
                     ice = True
                 else:
-                    num_scatter_events+=1
+                    #num_scatter_events+=1
                     ice = False
                     if particle == True and PhaseWeight > 0.01:
                         ## Do up-to 20 more bounces for the internal scattering if more than 1% of the particle energy is left?
