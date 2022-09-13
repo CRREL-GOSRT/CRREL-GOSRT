@@ -1,5 +1,0 @@
-Wavelength Dependent Optical Properties File Created From /Users/rdcrltwl/Desktop/UVD_microCT/Feb12/VTK/Pit1_10_1/Snow/FULL_Top/CRREL_MESH.vtk 
-wavelength (nm),Extinction,Single Scattering Albedo,Absorption
-750.0,1.021,inf,-inf
-800.0,1.021,inf,-inf
-1500.0,1.313,inf,-inf

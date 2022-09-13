@@ -491,7 +491,7 @@ class SlabModel:
         Fice[LowerMovIdx]=(np.array([IceDict[i] for i in layerIds[LowerMovIdx]])*fact
                         + (1.-fact)*Fice[LowerMovIdx])
 
-        B[LowerMovIdx]=(np.array([BDict[i] for i in layerIds[LowerMovIdx]])*fact
+        B[LowerMovIdx]=(np.array([Bdict[i] for i in layerIds[LowerMovIdx]])*fact
                         + (1.-fact)*B[LowerMovIdx])
 
         Fsoot[LowerMovIdx]=(np.array([SootDict[i] for i in layerIds[LowerMovIdx]])*fact

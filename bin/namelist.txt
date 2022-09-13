@@ -6,12 +6,14 @@
 MaterialPath = /Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/
 #PropFileNames = OpticalProp14_13.txt,
 
-MasterPath = /Users/rdcrltwl/Desktop/Circles/Outputs/
-PropFileNames = Compact.txt,
+#MasterPath = /Users/rdcrltwl/Desktop/CRRELRTM/CRREL-GOSRT/bin/SampleData
+MasterPath = /Users/rdcrltwl/Desktop/Optical_Obs_Compare/
+#PropFileNames = Facets_07122022_Particle.txt,
+PropFileNames = Optical_Properties_Pit1_1_1.txt,Optical_Properties_Pit1_1_2.txt,Optical_Properties_Pit1_1_3.txt,Optical_Properties_Pit1_6_1.txt 
 
 
 ## Snowpack Size and Layer Characteristics
-LayerTops = 60,0
+LayerTops = 340,320,300,280,0
 xSize = 10
 ySize = 10
 
@@ -20,7 +22,7 @@ DepthUnits = mm
 WaveUnits = nm
 
 ## Optional Contaminate Properties - Fsoot = 0, for pristine snow
-Fsoot = 0,0,0
+Fsoot = 0,0,0,0
 Contaminate = diesel
 
 ## Phase function options
@@ -40,4 +42,4 @@ Time = 03-12 14:35
 Elevation = 553
 
 ## Fraction of Diffuse Radiation.
-DiffuseFraction = 0.7
+DiffuseFraction = 0.85

@@ -15,13 +15,13 @@ from crrelGOSRT import SlabModel
 import vtk
 from distutils.version import StrictVersion
 
-print(vtk.__version__)
-
-if StrictVersion(vtk.__version__) <= StrictVersion('9.1.0'):
-    print("?")
-else:
-    print("Okay!")
-sys.exit()
+# print(vtk.__version__)
+#
+# if StrictVersion(vtk.__version__) <= StrictVersion('9.1.0'):
+#     print("?")
+# else:
+#     print("Okay!")
+# sys.exit()
 
 def GetZenith(time,latitude,longitude,elevation,timeformat='%Y-%m-%d_%H:%M:%S'):
     from solarposition import sunposition as sunPos
@@ -76,15 +76,19 @@ Longitude = -72.2740
 Time = '02-12 15:35'
 Elevation = 553
 TimeFormat='%m-%d %H:%M'
+nPhotons=20000
 
 Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
-WaveLength=np.arange(400,1500,20)  # input for GetSpectralAlbedo function
+WaveLength=np.arange(1450,1600,20)  # input for GetSpectralAlbedo function
 Slab=SlabModel.SlabModel(namelist='namelist.txt')
 Slab.Initialize()
 Azi,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,timeformat='%m-%d %H:%M')
 #
-Albedo,Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=1000)
+Albedo,Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=nPhotons)
 plt.figure()
 plt.plot(WaveLength,Albedo,lw='2',color='b',label="Photon Tracking Simple")
 plt.show()
+
+Slab.WriteSpectralToFile(os.getcwd()+'/340.0_MM_FEB12_1500.txt',
+    nPhotons,Zenith,Azimuth,WaveLength,Albedo,Absorption,Transmiss,filename='34mm Feb12 Observations - 85% diffuse')

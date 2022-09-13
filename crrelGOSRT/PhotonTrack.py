@@ -145,12 +145,12 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                                                             Tolerance=Tolerance,description=MeshDescription,smooth=phaseSmooth)
     end = datetime.now()
     mesh_read_time = (end-start)
-    
+
     if str(raylen).lower() == 'auto':
         raylen = 8.*1./(SSA*Density/4000.) ## assume a distance 20 x the theoretical scattering coefficient.
         print("Auto computing raylen from mesh properties = %.1f"%(raylen))
 
-    
+
     print("Finished loading mesh in... ",str(mesh_read_time))
     SnowMesh.AssignMaterial('ice',filePath=MaterialPath)  ##Assign Material
 
@@ -181,7 +181,7 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                show_edges=False, opacity=1., color="w",
                diffuse=0.8, smooth_shading=True,specular=0.2)
 
-        #_,perspective = plotter.show(screenshot=True)  ### this is returning a NoneType object for me, causing issue with subplot 2,2,2 below
+        _,perspective = plotter.show(screenshot=True)  ### this is returning a NoneType object for me, causing issue with subplot 2,2,2 below
 
 
 
@@ -213,22 +213,24 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
 
         fig=plt.figure(figsize=(9,9))
         ax=fig.add_subplot(2,2,1)
-        ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='$\gamma_{sca}$ = %.2f'%kExt)
-        ax.set_ylabel("POE")
+        ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='$\gamma_{sca}$ = %.2f mm$^{-1}$'%kExt)
+        ax.set_ylabel("Scattering Probability")
         ax.set_xlabel("$d$ (mm)")
-        plt.title("Curve fit for $\gamma_{ext}$")
+        plt.title("$\gamma_{sca}$ vs. Scattering Probability")
         ax.grid()
+        ax.legend()
 
-        # ax=fig.add_subplot(2,2,2)
-        # ax.imshow(perspective)  ## commented for now until we debug perspective variable
-        # ax.get_xaxis().set_visible(False)
-        # ax.get_yaxis().set_visible(False)
+        ax=fig.add_subplot(2,2,2)
+        ax.imshow(perspective)  ## commented for now until we debug perspective variable
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
 
         ax=fig.add_subplot(2,2,3)
         ax.hist(np.array(Fice),edgecolor='k')
-        ax.axvline(np.nanmean(Fice),color='r',lw=2.0,ls='--')
+        ax.axvline(np.nanmean(Fice),color='r',lw=2.0,ls='--',label='$\overline{F_{ice}}$ = %.2f'%(np.nanmean(Fice)))
         ax.set_xlabel("$F_{ice}$",fontsize=12)
         ax.set_ylabel("Count")
+        ax.legend()
         ax.grid()
         plt.title("Histogram of $F_{ice}$",loc='left')
 
@@ -286,9 +288,9 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Estimated Sample Grain Diameter = %.2f (mm) \n"%GrainDiam)
        file.write("Max Number Bounces allowed in phase function and Ice Path Sampling: %i \n"%maxBounce)
        file.write("Extinction Coefficient = %.4f (mm^{-1}) \n"%(kExt))
-       file.write("Estimated Geometric Asymmetry Parameter (g) = %.2f (-) \n"%asymmparam)
-       file.write("Estimated Asymmetry Parameter (g) = %.2f (-) \n"%(0.5*(asymmparam+1.)))
-       file.write("Estimated Single Scattering Albedo = %.2f (-)\n"%np.nanmean(ScatAlb))
+       file.write("Estimated Geometric Asymmetry Parameter (g) = %.3f (-) \n"%asymmparam)
+       file.write("Estimated Asymmetry Parameter (g) = %.3f (-) \n"%(0.5*(asymmparam+1.)))
+       file.write("Estimated Single Scattering Albedo = %.6f (-)\n"%np.nanmean(ScatAlb))
        file.write("Estimated Absorption Coefficient = %.6f (mm^{-1})\n"%Ka)
        file.write("Mean fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmean(Fice))
        file.write("Median fractional distance traveled in ice medium (Fice) = %.3f \n"%np.nanmedian(Fice))
@@ -312,14 +314,14 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     if plot == True:
         ax=fig.add_subplot(2,2,4)
         ax.plot(np.degrees(thetas),POWER,label='%s'%wavelen)
-        #ax.text(5,500,"g = %.2f"%asymmparam,ha='left')
+        ax.text(5,1100,"g = %.2f"%(0.5*(asymmparam+1.)),ha='left')
         ax.set_yscale('log')
         ax.set_xlabel("Theta (degrees)")
         ax.set_ylabel("Power")
         ax.set_xlim(0,180)
         ax.set_ylim(0.01,10000)
         ax.grid()
-        ax.legend()
+        #ax.legend()
         ax.set_title("Scattering Phase Function",loc='left')
 
     else:
