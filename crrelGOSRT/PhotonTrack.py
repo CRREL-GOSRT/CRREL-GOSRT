@@ -212,15 +212,14 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
     if plot == True:
 
         fig=plt.figure(figsize=(9,9))
-        ax=fig.add_subplot(2,2,1)
+        ax=fig.add_subplot(2,2,2)
         ax.plot(distances,1.0-np.exp(-(kExt*distances)),color='indigo',ls='-',label='$\gamma_{sca}$ = %.2f mm$^{-1}$'%kExt)
-        ax.set_ylabel("Scattering Probability")
+        ax.set_ylabel("Scattering CDF")
         ax.set_xlabel("$d$ (mm)")
-        plt.title("$\gamma_{sca}$ vs. Scattering Probability")
         ax.grid()
         ax.legend()
 
-        ax=fig.add_subplot(2,2,2)
+        ax=fig.add_subplot(2,2,1)
         ax.imshow(perspective)  ## commented for now until we debug perspective variable
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
@@ -422,7 +421,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
     #     x1,x2=np.random.uniform(SnowMesh.xBounds[0],SnowMesh.xBounds[1],2)
     #     y1,y2=np.random.uniform(SnowMesh.yBounds[0],SnowMesh.yBounds[1],2)
     #     z1,z2=np.random.uniform(SnowMesh.zBounds[0],SnowMesh.zBounds[1],2)
-    
+
     # Option to initialize the photon on a mesh edge (can be within either phase)
     for ii in range(nPhotons):
         axis=np.random.randint(0,6) ## Choose random axis (x,y,z)
