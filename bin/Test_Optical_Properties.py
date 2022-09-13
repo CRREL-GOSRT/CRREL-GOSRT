@@ -1,6 +1,5 @@
 ## test photon track! ##
 import sys
-#sys.path.append('/Users/rdcrltwl/Desktop/CRRELRTM/CRREL-GOSRT/crrelGOSRT/')
 from crrelGOSRT import PhotonTrack
 import numpy as np
 import pyvista as pv
