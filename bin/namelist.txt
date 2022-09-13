@@ -9,11 +9,11 @@ MaterialPath = /Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/
 #MasterPath = /Users/rdcrltwl/Desktop/CRRELRTM/CRREL-GOSRT/bin/SampleData
 MasterPath = /Users/rdcrltwl/Desktop/Optical_Obs_Compare/
 #PropFileNames = Facets_07122022_Particle.txt,
-PropFileNames = Optical_Properties_Pit1_1_1.txt,Optical_Properties_Pit1_1_2.txt,Optical_Properties_Pit1_1_3.txt,Optical_Properties_Pit1_6_1.txt 
+PropFileNames = Optical_Properties_Pit1_1_1.txt,Optical_Properties_Pit1_1_2.txt#,Optical_Properties_Pit1_1_3.txt#,Optical_Properties_Pit1_6_1.txt 
 
 
 ## Snowpack Size and Layer Characteristics
-LayerTops = 340,320,300,280,0
+LayerTops = 25,5,0#340,320,300,280,0
 xSize = 10
 ySize = 10
 

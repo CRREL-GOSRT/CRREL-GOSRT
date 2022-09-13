@@ -80,7 +80,7 @@ nPhotons=20000
 
 Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
-WaveLength=np.arange(1450,1600,20)  # input for GetSpectralAlbedo function
+WaveLength=np.arange(400,1600,20)  # input for GetSpectralAlbedo function
 Slab=SlabModel.SlabModel(namelist='namelist.txt')
 Slab.Initialize()
 Azi,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,timeformat='%m-%d %H:%M')
@@ -90,5 +90,5 @@ plt.figure()
 plt.plot(WaveLength,Albedo,lw='2',color='b',label="Photon Tracking Simple")
 plt.show()
 
-Slab.WriteSpectralToFile(os.getcwd()+'/340.0_MM_FEB12_1500.txt',
+Slab.WriteSpectralToFile(os.getcwd()+'/25.0_NOEXT_092022.txt',
     nPhotons,Zenith,Azimuth,WaveLength,Albedo,Absorption,Transmiss,filename='34mm Feb12 Observations - 85% diffuse')
