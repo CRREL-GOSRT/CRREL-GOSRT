@@ -60,21 +60,21 @@ def ImagesToArray(path,outpath,XYstart,XYend,depthTop,Ztop,voxelRes,thresh=0.9,s
     Note that depths are measured from ground (d=0)
 
     INPUTS:
-        path: main path for microCT data
-        outpath: Output Path for .vtk files
-        XYstart: The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
-        XYend: The ending point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
-        depthTop: Top snow depth of scanned sample (in mm) --> Usually corresponds to file name in "subpath" variable
+        path - (str) main path for microCT data
+        outpath - (str) Output Path for .vtk files
+        XYstart - (int) The starting point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
+        XYend - (int) The ending point in XY for the mesh subset within a sample image (in plane view) in millimeters, assuming the the left most pixel is 0.
+        depthTop - (int) Top snow depth of scanned sample (in mm) --> Usually corresponds to file name in "subpath" variable
            * Note that depthTop is critically important in getting the depth-oriented sample correct!
-        Ztop: Top depth selected for mesh sample subset (must be within the sample depth)
-        voxelRes: voxel resolution in mm from microCT log
-        thresh: threshold for snow/air boundary in binarized microCT images, recommend 0.9
-        savePropsToCsv: option to save sample properties to CSV file
-        saveMeshParams: option to save mesh parameter information
+        Ztop - (int) Top depth selected for mesh sample subset (must be within the sample depth)
+        voxelRes - (float) voxel resolution in mm from microCT log
+        thresh - (float) threshold for snow/air boundary in binarized microCT images, recommend 0.9
+        savePropsToCsv - (bool) option to save sample properties to CSV file
+        saveMeshParams - (bool) option to save mesh parameter information
 
     RETURNS:
-        SNOW: binary 3D array where 1 is snow and 0 is air
-        grid: list of numpy arrays that represent coordinate matrices for X,Y,Z axes of sample array
+        SNOW - (3D array) binary 3D array where 1 is snow and 0 is air
+        grid - (list) list of numpy arrays that represent coordinate matrices for X,Y,Z axes of sample array
 
     """
     # begin_time = datetime.now()
@@ -185,17 +185,17 @@ def GrainSeg(SNOW,voxelRes,minGrainSize,outpath,thresh=0.9,saveMeshParams=True):
     to separate out individual snow grains
 
     INPUTS:
-        SNOW: binary 3D array where 1 is snow and 0 is air
-        voxelRes: voxel resolution in mm from microCT log
-        minGrainSize: This sets the minimum grainsize (in mm) for the peak-local-max function for watershed segmentation, generally 0.3 - 0.8mm, depending on sample
-        outpath: Output Path for .vtk files
-        thresh: threshold for snow/air boundary in binarized microCT images, recommend 0.9
-        saveMeshParams: option to save mesh parameter information
+        SNOW - (3D array) binary 3D array where 1 is snow and 0 is air
+        voxelRes - (float) voxel resolution in mm from microCT log
+        minGrainSize - (float) This sets the minimum grainsize (in mm) for the peak-local-max function for watershed segmentation, generally 0.3 - 0.8mm, depending on sample
+        outpath - (str) Output Path for .vtk files
+        thresh - (float) threshold for snow/air boundary in binarized microCT images, recommend 0.9
+        saveMeshParams - (bool) option to save mesh parameter information
 
     RETURNS:
-        grain_labels: numpy array where 0 indicates air and all individual snow grains are marked with a unique number
-        grains: array that lists grain numbers in increasing order
-        properties: list of region properties for each grain (watershed), output by watershed segmentation algorithm
+        grain_labels - (3D array) array where 0 indicates air and all individual snow grains are marked with a unique number
+        grains - (ndarray) array that lists grain numbers in increasing order
+        properties - (list) list of region properties for each grain (watershed), output by watershed segmentation algorithm
 
     """
     # create arrays where non-snow pixels are 0 (SNOW_IN) or snow pixels are set to 0 (SNOW_OUT)
@@ -277,26 +277,26 @@ def MeshGen(grains,grain_labels,properties,voxelRes,grid,allowedBorder,
     out mesh VTK file(s) to specified directory.
 
     INPUTS:
-        grains: array that lists grain numbers in increasing order
-        grain_labels: numpy array where 0 indicates air and all individual snow grains are marked with a unique number
-        properties: list of region properties for each grain (watershed), output by watershed segmentation algorithm
-        voxelRes: voxel resolution in mm from microCT log
-        grid: list of numpy arrays that represent coordinate matrices for X,Y,Z axes of sample array
-        allowedBorder: Number of points allowed to be on a mesh border. This can eliminate "flat" grain boundaries that are up against the mesh boundary.
+        grains - (ndarray) array that lists grain numbers in increasing order
+        grain_labels - (ndarray) array where 0 indicates air and all individual snow grains are marked with a unique number
+        properties - (list) list of region properties for each grain (watershed), output by watershed segmentation algorithm
+        voxelRes - (float) voxel resolution in mm from microCT log
+        grid - (list) list of numpy arrays that represent coordinate matrices for X,Y,Z axes of sample array
+        allowedBorder - (int) Number of points allowed to be on a mesh border. This can eliminate "flat" grain boundaries that are up against the mesh boundary.
             * Larger number = less restrictive (if you want everything set to 1E6 or more)
-        minpoints: Minimum number of points allowed for each grain
-        decimate_val: The decimal percentage of mesh triangles to eliminate in decimation (recommended: 0.9)
-        outpath: Output Path for .vtk files
-        fullMeshName: filename for full sample mesh (*.vtk)
-        saveMeshParams: option to save mesh parameter information
-        savePropsToCsv: option to save sample properties to CSV file
-        check: If True, will stop after first grain to allow for visual inspection prior to running the whole code
+        minpoints - (int) Minimum number of points allowed for each grain
+        decimate_val - (float) The decimal percentage of mesh triangles to eliminate in decimation (recommended: 0.9)
+        outpath - (str) Output Path for .vtk files
+        fullMeshName - (str) filename for full sample mesh (*.vtk)
+        saveMeshParams - (bool) option to save mesh parameter information
+        savePropsToCsv - (bool) option to save sample properties to CSV file
+        check - (bool) If True, will stop after first grain to allow for visual inspection prior to running the whole code
             If True, it will:
                 - return a vtk window of a single grain for visual inspection, it will also
                 - plot up a 2D image slice showing the grain separation by coloring each grain differently
                 - Ideally, you want the boundaries to mostly fall along grain-necks and separate areas that look distinct
                 - Note that in this figure, the air space will plot as dark purple (0).
-        create_individual: option to save individual grain VTK files in addition to the full mesh, generally recommended if space allows
+        create_individual - (bool) option to save individual grain VTK files in addition to the full mesh, generally recommended if space allows
 
     """
 

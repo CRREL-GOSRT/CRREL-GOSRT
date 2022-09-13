@@ -1,19 +1,25 @@
-# -*- coding: utf-8 -*-
 """
-Created on Fri Sep  3 16:04:42 2021
+This is an example of how to run the 1D plane-parallel (slab) model to simulate the spectral albedo and
+BRDF.
+"""
 
-@author: RDCRLJTP
-"""
 import sys
 import os
 from matplotlib import pyplot as plt
 import numpy as np
-from math import sin, cos, radians
-import pyvista as pv
-import matplotlib.pyplot as plt
 from crrelGOSRT import SlabModel
 import vtk
 from distutils.version import StrictVersion
+
+### User input required ###
+Latitude = 43.8163
+Longitude = -72.2740
+Time = '02-12 15:35'
+Elevation = 553
+TimeFormat='%m-%d %H:%M'
+
+nPhotons=20000  # number of photons to use in slab model
+###########################
 
 # print(vtk.__version__)
 #
@@ -70,25 +76,47 @@ def GetZenith(time,latitude,longitude,elevation,timeformat='%Y-%m-%d_%H:%M:%S'):
 
     return az-90,zen
 
-
-Latitude = 43.8163
-Longitude = -72.2740
-Time = '02-12 15:35'
-Elevation = 553
-TimeFormat='%m-%d %H:%M'
-nPhotons=20000
-
+# Compute solar zenith and azimuth angle based on defined latitude, longitude, elevation, and time
 Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
-WaveLength=np.arange(400,1600,20)  # input for GetSpectralAlbedo function
-Slab=SlabModel.SlabModel(namelist='namelist.txt')
-Slab.Initialize()
-Azi,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,timeformat='%m-%d %H:%M')
-#
-Albedo,Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azi,nPhotons=nPhotons)
+
+#%% Example 1 - Calculate spectral albedo, plot and save data to output file
+
+WaveLength=np.arange(400,1600,20)  # choose wavelengths, input for GetSpectralAlbedo function
+Slab=SlabModel.SlabModel(namelist='namelist.txt') # load namelist into model
+Slab.Initialize() # initialize model (hardcodes namelist parameters into model and performs quality assurance checks)
+# run model
+Albedo,Absorption,Transmiss,transmissionDict=Slab.GetSpectralAlbedo(WaveLength,Zenith,Azimuth,nPhotons=nPhotons)
+# plot albedo
 plt.figure()
 plt.plot(WaveLength,Albedo,lw='2',color='b',label="Photon Tracking Simple")
 plt.show()
-
+# write output to file
 Slab.WriteSpectralToFile(os.getcwd()+'/25.0_NOEXT_092022.txt',
     nPhotons,Zenith,Azimuth,WaveLength,Albedo,Absorption,Transmiss,filename='34mm Feb12 Observations - 85% diffuse')
+
+
+#%% Example 2 - Calculate BRDF and plot
+
+wv=950  # define wavelength for which to calculate BRDF
+
+# run model
+BRDFArray,BRAziBins,BRZenBins,albedo,absorbed,transmiss = Slab.RunBRDF(wv,Zenith,Azimuth,nPhotons=nPhotons,binSize=7.5)
+
+print("Wave Length = %i"%wv)
+print("Albedo:",albedo/nPhotons)
+print("Absorption:",absorbed/nPhotons)
+print("Transmission:",transmiss/nPhotons)
+print("Sum:",(albedo+absorbed+transmiss)/nPhotons)
+
+dTheta=np.abs(np.radians(BRZenBins[1])-np.radians(BRZenBins[0]))
+ZenZen=np.radians(np.tile(BRZenBins, (len(BRAziBins), 1)))
+
+print(np.shape(ZenZen))
+print(np.sum(BRDFArray*np.cos(ZenZen)*np.sin(ZenZen))*dTheta**2/nPhotons)
+print(albedo/nPhotons)
+
+# plot BRDF
+figure,ax,Z=Slab.PlotBRDF(BRAziBins,BRZenBins,BRDFArray,levels=np.linspace(0,1.0,41),cmap='jet',norm=nPhotons,extend='both')
+plt.colorbar(Z)
+plt.title("BRDF $\lambda$ = %.1f nm | Zenith = %.1f"%(wv, Zenith))
