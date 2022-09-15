@@ -30,9 +30,9 @@ Publications
 
 Publications
 
-* Letcher et al., 2021: A generalized photon-tracking approach to simulate spectral snow
+* Letcher et al., 2022: A generalized photon-tracking approach to simulate spectral snow
 albedo and transmissivity using X-ray microtomography and
-geometric optics, The Cryosphere
+geometric optics, The Cryosphere | accepted
 
 * Parno et al., 2021: A Blended Approach Toward Simulating Spectral Snow Reflectivity and
                       Transmissivity Using Monte Carlo Photon-Tracking and
@@ -45,8 +45,8 @@ Numbered lists look like you'd expect:
 
 1. Generate 3D rendering of snow micro structure (not incorporated in the model)
 
-2. Compute optical properties from microCT rendering for use in 1D Slab Spectral Albeod Model
+2. Compute optical properties from microCT rendering for use in 1D Slab Spectral Albedo Model
 
 3. Simulate Snow Albedo, Transmissivity, Absorption using 1D photon tracking model with optical properties computed from step 2.
 
-`GitHub Link <hhttps://github.com/wxted/CRREL-GOSRT>`_.
+`GitHub Link <hhttps://github.com/CRREL-GSORT/CRREL-GOSRT>`_.
