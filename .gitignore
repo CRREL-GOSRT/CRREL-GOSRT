@@ -1,6 +1,6 @@
 # CRREL-GOSRT Specific
 file_pathnames.py
-crrelRTM.yml
+crrelGOSRT.yml
 
 # Environments
 .env
