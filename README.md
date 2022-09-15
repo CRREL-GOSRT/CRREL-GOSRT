@@ -1,13 +1,19 @@
 # CRREL-GOSRT
 CRREL Geometric Optics Snow Radiative Transfer (GOSRT) Model.
 
-![Four Panel Figure showing optical properties of a uCT sample from CRREL-GOSRT](bin/SampleData/Facets/CoarseGrain_4Panel.png?raw=true "Facets")
+![Four Panel Figure showing optical properties of a uCT sample from CRREL-GOSRT](FacetsExample.png?raw=true "Facets")
 
 ## Introduction
 
 CRREL-GOSRT is a radiative transfer model that simulates radiative transfer through snow using photon tracking and 3D renderings of μCT
 meshes.  The model operates within the geometric optics approximation (400-1400nm or so) and is a two step model that 1) uses photon tracking to estimate the
 optical properties (extinction, absorption, scattering) from a closed manifold surface rendering of a μCT sample and 2) simulates the spectral albedo and BRDF using a 1D photon tracking medium model forced with those optical properties. This model has able to handle multiple layers with unique optical properties and is capable of simulating RT through snow packs with arbitrary depths and can simulate spectral reflectance off of a specified lower boundary.
+
+### Critical Notes:
+- This model is provided "as is" to support snow optics research at CRREL and within the broader community.  It is important that
+  potential users know how to use this model, including its potential limitations prior to using it for research (i.e., read the paper describing the model)
+
+- While there are currently options in the medium model namelists to include light-absorbing particles or impurities, and while    there is some code in the model to handle this files, this functionality is not complete, nor has it been researched or reviewed, so it is not something that should be used at this time.  Rather, we have it included as a place holder for a future model capability 
 
 ## PhotonTrack model usage
 
@@ -124,7 +130,7 @@ Azimuth,Zenith=GetZenith(Time,Latitude,Longitude,Elevation,TimeFormat)
 
 **Citation for CRREL-GOSRT:**
 
-* Theodore Letcher, Julie Parno, Zoe Courville, Lauren Farnsworth, Jason Olivier, A generalized photon-tracking approach to simulate spectral snow albedo and transmissivity using X-ray microtomography and geometric optics, The Cryosphere.  *Submitted 09/2021: In Review*.
+* Theodore Letcher, Julie Parno, Zoe Courville, Lauren Farnsworth, Jason Olivier, A generalized photon-tracking approach to simulate spectral snow albedo and transmissivity using X-ray microtomography and geometric optics, The Cryosphere.  *Submitted 09/2021: Accepted for final publication 09/2022*.
 
 **Citation for Solar Position:**
 
