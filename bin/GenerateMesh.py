@@ -4,6 +4,9 @@ This is an example of how to generate a mesh from microCT data (binarized image 
 the CRREL-GOSRT model. This script uses functions in ImageSeg.py to convert the binarized MicroCT image stacks
 to a numpy array, perform snow grain segmentation, and generate a mesh of both individual snow grains
 and the full snow sample.
+
+Note that this requires the user to create a file_pathnames.py script with their local paths using
+file_pathnames_example.py as a template.
 """
 
 import file_pathnames as fp
