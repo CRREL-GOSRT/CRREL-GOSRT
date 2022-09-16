@@ -1,4 +1,4 @@
-# CRREL-GOSRT
+# CRREL-GOSRT [![DOI](https://zenodo.org/badge/536283362.svg)](https://zenodo.org/badge/latestdoi/536283362)
 CRREL Geometric Optics Snow Radiative Transfer (GOSRT) Model.
 
 ![Four Panel Figure showing optical properties of a uCT sample from CRREL-GOSRT](FacetsExample.png?raw=true "Facets")
@@ -13,7 +13,7 @@ optical properties (extinction, absorption, scattering) from a closed manifold s
 - This model is provided "as is" to support snow optics research at CRREL and within the broader community.  It is important that
   potential users know how to use this model, including its potential limitations prior to using it for research (i.e., read the paper describing the model)
 
-- While there are currently options in the medium model namelists to include light-absorbing particles or impurities, and while    there is some code in the model to handle these files, this functionality is not complete, nor has it been researched or reviewed, so it is not something that should be used at this time.  Rather, we have it included as a place holder for a future model capability 
+- While there are currently options in the medium model namelists to include light-absorbing particles or impurities, and while    there is some code in the model to handle these files, this functionality is not complete, nor has it been researched or reviewed, so it is not something that should be used at this time.  Rather, we have it included as a place holder for a future model capability
 
 ## PhotonTrack model usage
 
