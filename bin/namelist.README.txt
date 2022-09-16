@@ -6,12 +6,12 @@
 
 ### File Paths and Names ###
 
-MasterPath = Parent path to folder with subfolders representing each snow layer.
-LayerPaths = Comma separated subfolders within the master path that contain .txt files with layer properties
+MasterPath = Parent path to folder with .txt files representing the optical properties of each snow layer.
 MaterialPath = Full path to material .csv files with refractive index information
-PropFileName = Properties.txt
+PropFileNames = Properties.txt,Properties2.txt, etc.  .txt files corresponding to the optical properties of each layer.
 
 ## Snowpack Size and Layer Characteristics
+## Note, that this variable must have the same number of comma separated values as PropFileNames (not including the 0).
 LayerTops = Comma separated values indicating the physical top of each layer, last value must be 0, however if 0 is not included, the model will just add it.
 
 xSize = physical x starting position in model, mostly irrelevant
@@ -22,6 +22,8 @@ DepthUnits = Units for layer depths, can be (mm, m, cm, in)
 WaveUnits = Units for Wavelength, can be ('m','cm','mm','um','nm')
 
 ## Optional Contaminate Properties - Fsoot = 0, for pristine snow
+## NOTE: This is not yet functional, the model calls and stores these values, but does not use them.
+
 Fsoot = Comma separated values indicating the "soot" photon path (i.e., fraction of photon path spent within a contaminate)
 Contaminate = Contaminate material: string, must correspond to a .csv file in MaterialPath
 
@@ -37,7 +39,9 @@ RussianRouletteWeight = Integer number to assist with photon killing (I usually 
 
 
 ## Geographic information, to aid in setting solar zenith and azimuth angles
-## only used when calling GetZenith()
+## this may be used in the future if the model includes a function to get the solar zenith and azimuth angles.
+## for now, this can just be used to help keep track of simulations if they relate to specific geography. 
+
 Latitude = Site latitude
 Longitude = Site longitude
 Time = Time of sample (in UTC)

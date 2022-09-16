@@ -2,18 +2,12 @@
 
 ### File Paths and Names ###
 
-#MasterPath = /Users/rdcrltwl/Desktop/ESC_2021/OpticalProps/Facets/Facets_Props/
-MaterialPath = /Users/rdcrltwl/Desktop/NewRTM/crrel-snow-rtm/Materials/
-#PropFileNames = OpticalProp14_13.txt,
+MasterPath = /Path/to/optical_properties/files/
 
-#MasterPath = /Users/rdcrltwl/Desktop/CRRELRTM/CRREL-GOSRT/bin/SampleData
-MasterPath = /Users/rdcrltwl/Desktop/Optical_Obs_Compare/
-#PropFileNames = Facets_07122022_Particle.txt,
-PropFileNames = Optical_Properties_Pit1_1_1.txt,Optical_Properties_Pit1_1_2.txt#,Optical_Properties_Pit1_1_3.txt#,Optical_Properties_Pit1_6_1.txt 
-
+PropFileNames = sfc_2_300mm.txt,300mm_2_100mm.txt,100mm_2_50mm.txt,50mm_2_ground.txt
 
 ## Snowpack Size and Layer Characteristics
-LayerTops = 25,5,0#340,320,300,280,0
+LayerTops = 600,300,100,50,0
 xSize = 10
 ySize = 10
 
@@ -26,7 +20,7 @@ Fsoot = 0,0,0,0
 Contaminate = diesel
 
 ## Phase function options
-PhaseFunc=2
+PhaseFunc=2 ## Ignores asymmetry parameter.
 Asymmetry = 0.87
 PhaseSamples = 10000
 
@@ -35,7 +29,7 @@ RussianRouletteThresh = 0.02
 RussianRouletteWeight = 6
 
 ## Geographic information, to aid in setting solar zenith and azimuth angles
-## only used when calling GetZenith()
+## Not really used, but stored as part of legacy code during testing.
 Latitude = 43.8163
 Longitude = -72.2740
 Time = 03-12 14:35
