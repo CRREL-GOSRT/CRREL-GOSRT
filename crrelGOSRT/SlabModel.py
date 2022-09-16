@@ -272,7 +272,8 @@ class SlabModel:
             ## Close the file and clear the memory within "Lines"
             txtdata.close()
             Lines=None
-            self.__SootDict[self.__layerIds[idx]]=self.namelistDict['Fsoot'][idx]
+            ## This is currently set to zero to ensure it's not used!
+            self.__SootDict[self.__layerIds[idx]]= 0.0 #self.namelistDict['Fsoot'][idx]
 
         ## This is a fairly involved function that sets the probabilistic Scattering
         ## direction based on a binned phase-function.
@@ -839,8 +840,9 @@ class SlabModel:
 
 
             ## Absorb some photons! ##
+            ## kappaSoot*Fsoot -> Not used, but saved for future LAP capabilities.
             Bscale = (1. + SnowDens/917.0*(Bparam - 1.))
-            deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale+kappaSoot*Fsoot)))*Photons
+            deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale)))*Photons
             absorbed+=np.sum(deltaW)
             Photons=Photons-deltaW
 
@@ -1134,7 +1136,7 @@ class SlabModel:
 
                 ## Absorb some photons! ##
                 Bscale = (1. + SnowDens/917.0*(Bparam - 1.))
-                deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale+kappaSoot*Fsoot)))*Photons
+                deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale)))*Photons
 
 
                 absorbed+=np.sum(deltaW)
@@ -1388,7 +1390,7 @@ class SlabModel:
 
             ## Absorb some photons! ##
             Bscale = (1. + SnowDens/917.0*(Bparam - 1.))
-            deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale+kappaSoot*Fsoot)))*Photons
+            deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale)))*Photons
 
             absorbed+=np.sum(deltaW)
             Photons=Photons-deltaW
