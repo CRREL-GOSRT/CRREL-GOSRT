@@ -2,6 +2,9 @@
 This is an example of how to run the PhotonTrack module to get the optical properties
 (extinction coefficient, phase function, and ice path fraction) from the snow sample mesh using ray tracing.
 The full descriptions of inputs for the RayTracing_OpticalProperties function can be found in PhotonTrack.
+
+Note that this requires the user to create a file_pathnames.py script with their local paths using
+file_pathnames_example.py as a template.
 """
 
 import file_pathnames as fp
