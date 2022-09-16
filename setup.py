@@ -9,7 +9,7 @@ setup(
     author='Ted Letcher, Julie Parno',
     author_email='Theodore.W.Letcher@erdc.dren.mil',
     packages=['crrelGOSRT'],
-    scripts=['bin/Test_Optical_Properties.py','bin/RunGOSRT.py'],
+    scripts=['bin/GetOpticalProperties.py','bin/RunSlabModel.py','bin/GenerateMesh.py'],
     url='https://github.com/wxted/CRREL-GOSRT',
     license='LICENSE.txt',
     description='A blended photon-tracking model for Snow radiative transfer in the geometric optics limit.',
