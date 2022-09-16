@@ -1,4 +1,4 @@
-# CRREL-GOSRT [![DOI](https://zenodo.org/badge/536283362.svg)](https://zenodo.org/badge/latestdoi/536283362)
+# CRREL-GOSRT [![DOI](https://zenodo.org/badge/537547002.svg)](https://zenodo.org/badge/latestdoi/537547002)
 CRREL Geometric Optics Snow Radiative Transfer (GOSRT) Model.
 
 ![Four Panel Figure showing optical properties of a uCT sample from CRREL-GOSRT](FacetsExample.png?raw=true "Facets")
