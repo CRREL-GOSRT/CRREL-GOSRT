@@ -667,7 +667,7 @@ class SlabModel:
         return
 
 
-    def RunBRDF(self,WaveLength,Zenith,Azimuth,nPhotons=10000,binSize=10,angleUnits='Degrees'):
+    def RunBRDF(self,WaveLength,Zenith,Azimuth,nPhotons=10000,binSize=10,angleUnits='Degrees',verbose = True):
 
         """ User accessible function to estimate the Bidirectional Reflectance distribution Fuction (BRDF)
             following Kaempfer et al. 2007.
@@ -744,6 +744,31 @@ class SlabModel:
         Fsoot = np.array([self.__SootDict[i] for i in layerIds])
         Bparam = np.array(self.__BDict[i] for i in layerIds)
         SnowDens = np.array([self.__DensDict[i] for i in layerIds])
+
+        if self.__Diffraction == True:
+                ## If diffraction == True, Multiply the extinction coefficient by 2 more Geometric Optics Approximation.
+                ## This is for the BRDF function. ##
+                extCoeff = 2.*extCoeff
+                DiffractionPDF = []
+                ## also, need to get the "Phase function" Samples --> Note, these are just 
+                ## raw probability distrubtion functions, not actual phase functions.
+                ## loop through each layer.
+                for idx, i in enumerate(self.__layerIds):
+                    Total_Intensity =[] ## just do a simple list
+                    for jdx, j in enumerate(self.__DiffractionShapeClasses[self.__layerIds[idx]]):
+                            IterpTheta,IterpIntensity=j.GetDiffractionPhaseFunction(WaveLength,self.DiffractSamples,
+                                                                                    scale = 30,PzScale = 1000,
+                                                                                    verbose = verbose, print_freq = 1000,
+                                                                                    maxTheta=5*WaveLength/1250.)
+
+                            Total_Intensity.append(IterpIntensity*self.__DiffractFracDict[idx][jdx]) ## Multiply intensity by the fractional weight!
+
+                    ## now that you have each layer. do average!
+                    DiffractedIntensity = np.nanmean(Total_Intensity,axis=0)
+                    ##  Add to diffraction PDF list, such that a diffraction phase function is defined for EACH layer id. --> in cos(theta)
+                    DiffractionPDF.append(np.cos(np.random.choice(IterpTheta, self.DiffractSamples, p=list(np.array( DiffractedIntensity  )/np.sum( DiffractedIntensity )),replace=True)))
+
+                ## at this point, diffractional scattering should be set up for the model. ##
 
         if self.namelistDict['PhaseFunc'] == 1: ## If using idealized Henyey Green Function!
             g=np.array([self.namelistDict['Asymmetry'][i] for i in layerIds])
@@ -909,17 +934,48 @@ class SlabModel:
             ## removed all photons no long in the snowpack, and update the current boundaries and coefficients.
 
             ## Now need to do the phase function (it not idelized!)
-            if self.namelistDict['PhaseFunc'] == 2: ## if it's not idealized!
-                ProbIdx=np.random.randint(0,self.nSamples,size=len(Photons))
-                Scatter=np.zeros([len(Photons)])
-                ScatterNew=np.zeros_like(Scatter)
-                for i in self.__layerIds:
-                    ScatIdx=np.where(layerIds == i)
-                    Scatter[ScatIdx]=(self.__CosIs[i][ProbIdx])[ScatIdx]
-            else:
-                rand=np.random.uniform(0,1.,size=len(Photons))
-                Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
-                ProbIdx=0
+            ## add function for diffraction ##
+            if self.__Diffraction == True:
+                ChooseDiffraction = np.random.uniform(0,1,size=len(Photons))
+                ChooseDiffractionIdx = np.where(ChooseDiffraction > 0.5) ## ChooseDiffraction index = where random number > 0.5 (used later in absorption)
+                ChooseFresnelIdx = np.where(ChooseDiffraction <= 0.5)
+                if self.namelistDict['PhaseFunc'] > 1: ## if it's not idealized!
+                    ProbIdx=np.random.randint(0,self.nSamples,size=len(Photons))
+                    Scatter=np.zeros([len(Photons)])
+                    ScatterNew=np.zeros_like(Scatter)
+                    
+                    DiffFractLayerIds = layerIds[ChooseDiffractionIdx]
+                    FresnelLayerIds = layerIds[ChooseFresnelIdx]
+                    for i in self.__layerIds:
+                        ## Diffraction first! -- > Isolate indicies within this layer, where choose diffraction is also > 0.45
+                        ScatIdx=np.where((layerIds == i) & (ChooseDiffraction > 0.5))
+                        ProbIdx2=np.random.randint(0,self.DiffractSamples,size=np.shape(ScatIdx)[1]) ## diffraction sample indicies
+                        Scatter[ScatIdx]=(DiffractionPDF[i][ProbIdx2])
+
+                        ## Do Fresnel Second -- > 
+                        ScatIdx=np.where((layerIds == i) & (ChooseDiffraction <= 0.5))
+                        ProbIdx1=np.random.randint(0,self.nSamples,size=np.shape(ScatIdx)[1]) ## Fresnel sample indicies
+                        Scatter[ScatIdx]=(self.__CosIs[i][ProbIdx1])
+                    
+                else:
+                    rand=np.random.uniform(0,1.,size=len(Photons))
+                    Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
+                    ProbIdx=0
+
+            else:  #No diffraction included!
+
+                if self.namelistDict['PhaseFunc'] == 2: ## if it's not idealized!
+                    ProbIdx=np.random.randint(0,self.nSamples,size=len(Photons))
+                    Scatter=np.zeros([len(Photons)])
+                    ScatterNew=np.zeros_like(Scatter)
+                    for i in self.__layerIds:
+                        ScatIdx=np.where(layerIds == i)
+                        Scatter[ScatIdx]=(self.__CosIs[i][ProbIdx])[ScatIdx]
+                else:
+                    rand=np.random.uniform(0,1.,size=len(Photons))
+                    Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
+                    ProbIdx=0
+
             ## Change the layers if needed.
             layerIds, Scatter, Fice, extCoeff,Fsoot,Bparam,SnowDens=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,Bparam,extCoeff,Fsoot,SnowDens,
                                                                 self.__ExtCoeffDict,self.__FiceDict,self.__BDict,self.__SootDict,self.__DensDict,
@@ -930,6 +986,11 @@ class SlabModel:
             ## kappaSoot*Fsoot -> Not used, but saved for future LAP capabilities.
             Bscale = (1. + SnowDens/917.0*(Bparam - 1.))
             deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale)))*Photons
+
+            ## set abosprtion = 0 where diffracted if diffraction is turned on! ##
+            if self.__Diffraction == True:
+                deltaW[ChooseDiffractionIdx] = 0.0 ## no change in energy for diffracted rays!!
+
             absorbed+=np.sum(deltaW)
             Photons=Photons-deltaW
 
