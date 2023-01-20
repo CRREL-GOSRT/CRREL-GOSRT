@@ -64,3 +64,33 @@ def WaveLengthToColor(WaveLength, gamma=0.8):
 
         cols.append((R,G,B))
     return cols
+
+
+def isInside(x1, y1, x2, y2, x3, y3, x, y):
+    r""" This is a simple helper function used in the diffraction code to determine 
+        If a point with coordinates (x,y) is within a triangle with vertex points:
+        (x1,y1),(x2,y2),(x3,y3) ---
+
+                 (x3,y3)
+                   /\
+                  /  \
+                 /    \
+                /      \
+               / .(x,y) \
+        (x1,y1)----------(x2,y2)
+
+        Inputs:
+            Vertex points: x1,y1 | x2,y2 | x3,y3
+            point to test: x, y
+        
+        Returns: Bool - True if point is within triangle / False if outside.
+
+    """
+ 
+    c1 = (x2-x1)*(y-y1)-(y2-y1)*(x-x1)
+    c2 = (x3-x2)*(y-y2)-(y3-y2)*(x-x2)
+    c3 = (x1-x3)*(y-y3)-(y1-y3)*(x-x3)
+    if (c1<0 and c2<0 and c3<0) or (c1>0 and c2>0 and c3>0):
+        return True 
+    else:
+        return False

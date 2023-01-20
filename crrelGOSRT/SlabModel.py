@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import glob as glob
 from crrelGOSRT import BRDFFunctions as BRDFFunc
+from crrelGOSRT import Diffraction as DifFunc
 import os
 
 ## For debug only!
@@ -126,7 +127,15 @@ class SlabModel:
                            'RussianRouletteWeight':6,
                            'xSize':10,
                            'ySize':10,
-                           'DiffuseFraction':0
+                           'DiffuseFraction':0,
+                           'Diffraction': 0 ,
+                           'DiffractShapes':[['circle'],['hexagon']],
+                           'ShapeFrac':[[1.0],[1.0]],
+                           'DiffractionPhaseSamples': 5000,
+                           'DiffractionGrainPath':'/Users/rdcrltwl/Desktop/SnowOpticsProject/MicroCTData/micro-CT/VTK/',
+                           'needle_aspect':0.06,
+                           'needle_cap_ratio':0.06,
+                           'DiffractionKwargs':{'normal': (0,0,1),'CellSamples':5,'nx':150,'ny':150}
                            }
 
         cwd=os.getcwd()
@@ -157,7 +166,7 @@ class SlabModel:
         print("!!!! -------------------- !!!!")
         return
 
-    def Initialize(self):
+    def Initialize(self,verbose = True):
 
         """
             Key initialization function that reads in the namelist data, performs some critical checks,
@@ -168,6 +177,36 @@ class SlabModel:
         print("---------")
         print("Initializing CRREL Slab RTM!")
         print("---------")
+
+        ## Check diffraction options for self-consistency if applicable! ##
+        if self.namelistDict['Diffraction'] > 0:
+            ### Need to check and make sure that length of diffract shapes = length of ShapeFrac = Num Layers 
+            ### Need to check that for each layer, the length of shapes = length of ShapeFrac for that layer
+            ### Need to check that for each layer, the sum of ShapeFrac = 1.0
+            print("!!!!            WARNING       !!!!")
+            print(" YOU ARE RUNNING THE MODEL WITH DIFFRACTION!!")
+            print(" This option is under development and has not been tested.")
+            print("!!!!          END WARNING       !!!!")
+
+            if verbose == True:
+                print("Checking diffraction settings for consistency ...")
+            assert len(self.namelistDict['DiffractShapes']) == len(self.namelistDict['ShapeFrac']), "The length of the diffraction shapes list must be equal to the length of the shape fraction!"
+            assert len(self.namelistDict['DiffractShapes']) == len(self.namelistDict['PropFileNames']), "The length of diffraction shapes must equal the number of layers!"
+            ## now check and make sure the fractions = 1
+            for ldx, l in enumerate(self.namelistDict['ShapeFrac']):
+                assert len(self.namelistDict['DiffractShapes'][ldx]) == len(l),' The number of unique shapes of layer %s is not equal to the number of fractional weights specified for each shape!'
+                assert np.sum(l) == 1.0, "The sum of the shape fractional weighting for layer %i must be equal to 1.  Your fractions sum to %.2f"%(ldx+1,np.sum(l))
+
+
+            if self.namelistDict['Diffraction'] > 0:
+                self.__Diffraction = True 
+
+
+        else:
+            self.__Diffraction = False ## if no diffraction, set = to false.
+                
+
+
 
         ## Here we define the allowed units for one to use for snow depth, in the end, everything is
         ## converted to millimeters to match the extinction coefficients computed from the
@@ -250,6 +289,12 @@ class SlabModel:
         self.__BDict={}
         self.__DensDict={}
         self.__SootDict={}
+
+        ## Diffraction Dictionaries...
+        self.__DiffractShapeDict={}
+        self.__DiffractFracDict={}
+        self.__DiffractSizeDict={}
+        self.__DiffractionShapeClasses={}
         headerLines=[]
         for idx, i in enumerate(self.namelistDict['PropFileNames']):
             txtdata = open(self.__PropFiles[idx], 'r')
@@ -269,11 +314,40 @@ class SlabModel:
                 if 'Theta (radians)' in c:
                     headerLines.append(cdx)
 
+                ### Initialize Diffraction Namelist values if appropriate! ###
+                if self.__Diffraction == True: ## Here is where you set up the Diffraction dictionaries, if diffraction == True!
+                    if 'Grain Diameter' in c:
+                        self.__DiffractSizeDict[self.__layerIds[idx]] = float(c.split('=')[-1].split('(')[0])
+
+                        ## add information to shapes and shape fractions ##
+                        self.__DiffractShapeDict[self.__layerIds[idx]]=self.namelistDict['DiffractShapes'][idx]
+                        self.__DiffractFracDict[self.__layerIds[idx]]=self.namelistDict['ShapeFrac'][idx]
+                        self.DiffractSamples = int(self.namelistDict['DiffractionPhaseSamples'])
+
+                        ## Now, actually load the shapes in to a dictionary. ##
+                        self.__DiffractionShapeClasses[self.__layerIds[idx]] = []
+                        for jdx, j in enumerate(self.namelistDict['DiffractShapes'][idx]):
+                            if '.vtk' in j: ## Special option, use a real snow grain specified by this path!
+                                grainFile = os.path.join(self.namelistDict['DiffractionGrainPath'],j)
+                                if verbose == True: 
+                                    print("Loading Grain File: %s for diffraction..."%grainFile)
+                                self.__DiffractionShapeClasses[self.__layerIds[idx]].append(DifFunc.RenderedDiffractionParticle(grainFile,**self.namelistDict['DiffractionKwargs']))
+                                self.__DiffractSizeDict[self.__layerIds[idx]] = self.__DiffractionShapeClasses[self.__layerIds[idx]][-1].GrainSize_meters*2000.## diameter in mm.
+                            else: ## use an idealized particle!
+                                if j.lower() == 'needle':
+                                    kwargs = {**self.namelistDict['DiffractionKwargs'] , **{'needle_aspect':self.namelistDict['needle_aspect'][idx],
+                                                                                       'needle_cap_ratio':self.namelistDict['needle_cap_ratio'][idx]}}
+                                else:
+                                    kwargs = self.namelistDict['DiffractionKwargs']
+                                self.__DiffractionShapeClasses[self.__layerIds[idx]].append(DifFunc.IdealizedDiffractionParticle(j,self.__DiffractSizeDict[self.__layerIds[idx]],**kwargs))
+                        
+
             ## Close the file and clear the memory within "Lines"
             txtdata.close()
             Lines=None
             ## This is currently set to zero to ensure it's not used!
             self.__SootDict[self.__layerIds[idx]]= 0.0 #self.namelistDict['Fsoot'][idx]
+
 
         ## This is a fairly involved function that sets the probabilistic Scattering
         ## direction based on a binned phase-function.
@@ -503,18 +577,20 @@ class SlabModel:
 
         extCoeff[LowerMovIdx]=np.array([ExtDict[i] for i in layerIds[LowerMovIdx]])
 
-        if self.namelistDict['PhaseFunc'] == 1:
-            rand=np.random.uniform(0.,1.,size=len(g[LowerMovIdx]))
-            g[LowerMovIdx]=(np.array([self.namelistDict['Asymmetry'][i] for i in layerIds[LowerMovIdx]])* fact +
-                        + (1.-fact)*g[LowerMovIdx])
-            Scatter[LowerMovIdx]=(1./(2.*g[LowerMovIdx]))*(1.+g[LowerMovIdx]**2.-((1-g[LowerMovIdx]**2.)/(1.-g[LowerMovIdx]+2.*g[LowerMovIdx]*rand))**2.)
-        else:
-            ScatterNew=np.zeros_like(Scatter)
-            for i in self.__layerIds:
-                ScatIdx=np.where(layerIds == i)
-                ScatterNew[ScatIdx]=(self.__CosIs[i][ProbIdx])[ScatIdx]
-            Scatter[LowerMovIdx] = (ScatterNew[LowerMovIdx]*fact
-                            + (1.-fact)*Scatter[LowerMovIdx])
+        if self.__Diffraction == False:
+                ## simple fix for now, only assume if diffraction == False.
+            if self.namelistDict['PhaseFunc'] == 1:
+                rand=np.random.uniform(0.,1.,size=len(g[LowerMovIdx]))
+                g[LowerMovIdx]=(np.array([self.namelistDict['Asymmetry'][i] for i in layerIds[LowerMovIdx]])* fact +
+                            + (1.-fact)*g[LowerMovIdx])
+                Scatter[LowerMovIdx]=(1./(2.*g[LowerMovIdx]))*(1.+g[LowerMovIdx]**2.-((1-g[LowerMovIdx]**2.)/(1.-g[LowerMovIdx]+2.*g[LowerMovIdx]*rand))**2.)
+            else:
+                ScatterNew=np.zeros_like(Scatter)
+                for i in self.__layerIds:
+                    ScatIdx=np.where(layerIds == i)
+                    ScatterNew[ScatIdx]=(self.__CosIs[i][ProbIdx])[ScatIdx]
+                Scatter[LowerMovIdx] = (ScatterNew[LowerMovIdx]*fact
+                                + (1.-fact)*Scatter[LowerMovIdx])
 
         if np.max(np.abs(Scatter)) > 1:
             self.FatalError("Scattering Phase Function Greater than 1!!!! Max = %.1f"%np.max(np.abs(Scatter)))
@@ -575,6 +651,17 @@ class SlabModel:
                 print(" BRDF: %s"%self.__SfcBRDF)
                 for i in self.BRDFParams.keys():
                     print("%s: %s"%(i,self.BRDFParams[i]))
+
+            if self.__Diffraction == True:
+                print("--- This model is configured for Diffraction ---")
+                print('Samples used in Diffraction Phase Function = %i'%self.DiffractSamples)
+                for i in self.__layerIds:
+                    print("  Id = %s | Number Shapes = %i | Shapes = %s | Fractional Weights = %s | Effective Particle Sizes = %s "%(i,
+                          len(self.__DiffractShapeDict[i]),self.__DiffractShapeDict[i],
+                          self.__DiffractFracDict[i],self.__DiffractSizeDict[i]))
+
+            else:
+                print("--- This model is NOT configured with diffraction ---")
 
 
         return
@@ -897,6 +984,9 @@ class SlabModel:
             print(" --> mod.Initialize()")
             sys.exit()
 
+        if self.namelistDict['Diffraction'] == True:
+            from crrelGOSRT import Diffraction
+
         WaveLength=np.array(WaveLength)
 
         ## Make sure WaveLength is in the limits
@@ -968,16 +1058,41 @@ class SlabModel:
             layerIds=np.zeros([nPhotons],dtype=np.short) ## short integer
 
 
+
             extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
             Fice = np.array([self.__FiceDict[i] for i in layerIds])
             Fsoot = np.array([self.__SootDict[i] for i in layerIds])
             Bparam = np.array([self.__BDict[i] for i in layerIds])
             SnowDens = np.array([self.__DensDict[i] for i in layerIds])
 
+            if self.__Diffraction == True:
+                ## If diffraction == True, Multiply the extinction coefficient by 2 more Geometric Optics Approximation.
+                extCoeff = 2.*extCoeff
+                DiffractionPDF = []
+                ## also, need to get the "Phase function" Samples --> Note, these are just 
+                ## raw probability distrubtion functions, not actual phase functions.
+                ## loop through each layer.
+                for idx, i in enumerate(self.__layerIds):
+                    Total_Intensity =[] ## just do a simple list
+                    for jdx, j in enumerate(self.__DiffractionShapeClasses[self.__layerIds[idx]]):
+                            IterpTheta,IterpIntensity=j.GetDiffractionPhaseFunction(wavelen,self.DiffractSamples,
+                                                                                    scale = 30,PzScale = 1000,
+                                                                                    verbose = verbose, print_freq = 1000,
+                                                                                    maxTheta=5*wavelen/1250.)
+
+                            Total_Intensity.append(IterpIntensity*self.__DiffractFracDict[idx][jdx]) ## Multiply intensity by the fractional weight!
+
+                    ## now that you have each layer. do average!
+                    DiffractedIntensity = np.nanmean(Total_Intensity,axis=0)
+                    ##  Add to diffraction PDF list, such that a diffraction phase function is defined for EACH layer id. --> in cos(theta)
+                    DiffractionPDF.append(np.cos(np.random.choice(IterpTheta, self.DiffractSamples, p=list(np.array( DiffractedIntensity  )/np.sum( DiffractedIntensity )),replace=True)))
+
+                ## at this point, diffractional scattering should be set up for the model. ##
+
             if self.namelistDict['PhaseFunc'] == 1: ## If using idealized HeyNey Green Function!
                 g=np.array([self.namelistDict['Asymmetry'][i] for i in layerIds])
             else:
-                g=self.NumLayers*[0.87]
+                g=self.NumLayers*[0.87]  #otherwise, just give it a value so that nothing crashes.  This won't actually be used anywhere.
 
             ## Current bin defines the lower and upper boundaries of the bin!
             currentBin=np.array([[self.__layerTops[i],self.__layerTops[i+1]] for i in layerIds]).T
@@ -1002,8 +1117,9 @@ class SlabModel:
             transmiss=0.0
             iterNum=1
             TotalPathVals=[]
+            ## This marks the beginning of the actually model integration
             while(len(Photons) > 0):
-                Photons,abso=self.__RussianRoulette(Photons)
+                Photons,abso=self.__RussianRoulette(Photons) ## this function kills photons.
                 absorbed+=abso
 
                 ## Get Direction!
@@ -1113,22 +1229,55 @@ class SlabModel:
                 Bparam = np.array([self.__BDict[i] for i in layerIds])
                 SnowDens = np.array([self.__DensDict[i] for i in layerIds])
 
-                ## okay, to recap, we have performed the russian roulette routine to handel dead PHOTONS
+                ## okay, to recap, we have performed the russian roulette routine to handle dead PHOTONS
                 ## Moved the photon through space following the direction vector and current position.
                 ## updated albedo transmissivity based on whether photons have left the snowpack entirely
                 ## removed all photons no long in the snowpack, and update the current boundaries and coefficients.
                 ## Now need to do the phase function (it not idelized!)
-                if self.namelistDict['PhaseFunc'] > 1: ## if it's not idealized!
-                    ProbIdx=np.random.randint(0,self.nSamples,size=len(Photons))
-                    Scatter=np.zeros([len(Photons)])
-                    ScatterNew=np.zeros_like(Scatter)
-                    for i in self.__layerIds:
-                        ScatIdx=np.where(layerIds == i)
-                        Scatter[ScatIdx]=(self.__CosIs[i][ProbIdx])[ScatIdx]
-                else:
-                    rand=np.random.uniform(0,1.,size=len(Photons))
-                    Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
-                    ProbIdx=0
+
+                ## add function for diffraction ##
+                if self.__Diffraction == True:
+                    ChooseDiffraction = np.random.uniform(0,1,size=len(Photons))
+                    ChooseDiffractionIdx = np.where(ChooseDiffraction > 0.5) ## ChooseDiffraction index = where random number > 0.5 (used later in absorption)
+                    ChooseFresnelIdx = np.where(ChooseDiffraction <= 0.5)
+                    if self.namelistDict['PhaseFunc'] > 1: ## if it's not idealized!
+                        ProbIdx=np.random.randint(0,self.nSamples,size=len(Photons))
+                        Scatter=np.zeros([len(Photons)])
+                        ScatterNew=np.zeros_like(Scatter)
+                        
+                        DiffFractLayerIds = layerIds[ChooseDiffractionIdx]
+                        FresnelLayerIds = layerIds[ChooseFresnelIdx]
+                        totalIdx = 0
+                        for i in self.__layerIds:
+                            ## Diffraction first! -- > Isolate indicies within this layer, where choose diffraction is also > 0.45
+                            ScatIdx=np.where((layerIds == i) & (ChooseDiffraction > 0.5))
+                            ProbIdx2=np.random.randint(0,self.DiffractSamples,size=np.shape(ScatIdx)[1]) ## diffraction sample indicies
+                            totalIdx += np.shape(ScatIdx)[1]
+                            Scatter[ScatIdx]=(DiffractionPDF[i][ProbIdx2])
+
+                            ## Do Fresnel Second -- > 
+                            ScatIdx=np.where((layerIds == i) & (ChooseDiffraction <= 0.5))
+                            ProbIdx1=np.random.randint(0,self.nSamples,size=np.shape(ScatIdx)[1]) ## Fresnel sample indicies
+                            totalIdx += np.shape(ScatIdx)[1]
+                            Scatter[ScatIdx]=(self.__CosIs[i][ProbIdx1])
+                        
+                    else:
+                        rand=np.random.uniform(0,1.,size=len(Photons))
+                        Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
+                        ProbIdx=0
+
+                else:  #No diffraction included!
+                    if self.namelistDict['PhaseFunc'] > 1: ## if it's not idealized!
+                        ProbIdx=np.random.randint(0,self.nSamples,size=len(Photons))
+                        Scatter=np.zeros([len(Photons)])
+                        ScatterNew=np.zeros_like(Scatter)
+                        for i in self.__layerIds:
+                            ScatIdx=np.where(layerIds == i)
+                            Scatter[ScatIdx]=(self.__CosIs[i][ProbIdx])[ScatIdx]
+                    else:
+                        rand=np.random.uniform(0,1.,size=len(Photons))
+                        Scatter=(1./(2.*g))*(1.+g**2.-((1-g**2.)/(1.-g+2.*g*rand))**2.)
+                        ProbIdx=0
 
                 layerIds, Scatter, Fice, extCoeff,Fsoot,Bparam,SnowDens=self.__ChangeLayers(u0,u1,currentBin,layerIds,Fice,Bparam,extCoeff,Fsoot,SnowDens,
                                                                     self.__ExtCoeffDict,self.__FiceDict,self.__BDict,self.__SootDict,self.__DensDict,
@@ -1137,6 +1286,10 @@ class SlabModel:
                 ## Absorb some photons! ##
                 Bscale = (1. + SnowDens/917.0*(Bparam - 1.))
                 deltaW=(1.-np.exp(-s*(kappaIce*Fice*Bscale)))*Photons
+
+                ## set abosprtion = 0 where diffracted if diffraction is turned on! ##
+                if self.__Diffraction == True:
+                    deltaW[ChooseDiffractionIdx] = 0.0 ## no change in energy for diffracted rays!!
 
 
                 absorbed+=np.sum(deltaW)
@@ -1628,18 +1781,37 @@ class SlabModel:
         NamelistData = open(self.namelistPath, 'r')
         Lines = NamelistData.readlines()
 
-        listKeys=['PropFileNames','LayerTops','Fsoot','Asymmetry']
+        listKeys=['PropFileNames','LayerTops','Fsoot','Asymmetry','DiffractShapes','ShapeFrac','needle_aspect','needle_cap_ratio']
+        DiffractionKeywords = ['nx','ny','CellSamples','normal']
         # Strips the newline character
         for line in Lines:
             line=line.split('#')[0]
             key = line.split('=')[0].lstrip().rstrip()
+
+            if key in DiffractionKeywords:
+                values=line.split('=')[1].split('\n')[0].lstrip().rstrip().split(',')
+                try:
+                    NamelistDict['DiffractionKwargs'][key] = [float(i) for i in values if i != '']
+                except:
+                    NamelistDict['DiffractionKwargs'][key] = [i for i in values if i != '']
+                
             if key in namelistKeys:
                 if key in listKeys:
                     values=line.split('=')[1].split('\n')[0].lstrip().rstrip().split(',')
-                    try:
-                        NamelistDict[key] = [float(i) for i in values if i != '']
-                    except:
-                        NamelistDict[key] = [i for i in values if i != '']
+                    ## Special case, diffraction shapes and fractions.  Need to return a "nested" list
+                    if key in ['DiffractShapes','ShapeFrac']:
+                        NamelistDict[key]=[] ## initialize empty list!
+                        for vdx, v in enumerate(values):
+                            SplitVals = v.lstrip().rstrip().split(';')
+                            try:
+                                NamelistDict[key].append([float(i) for i in SplitVals if i != ''])
+                            except:
+                                NamelistDict[key].append([i for i in SplitVals if i != ''])
+                    else:
+                        try:
+                            NamelistDict[key] = [float(i) for i in values if i != '']
+                        except:
+                            NamelistDict[key] = [i for i in values if i != '']
                 else:
                     value=line.split('=')[1].lstrip().rstrip().split('\n')[0].split(',')[0]
                     try:
