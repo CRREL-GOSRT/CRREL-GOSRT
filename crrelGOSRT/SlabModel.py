@@ -739,6 +739,10 @@ class SlabModel:
         ## Starting at top layer, so all layer ids start at zero!
         layerIds = np.zeros([nPhotons],dtype=np.short) ## short integer
 
+        if self.__Diffraction == True:
+            for i in self.__ExtCoeffDict.keys():
+                self.__ExtCoeffDict[i] = float(self.__ExtCoeffDict[i])*2. ## multiply by two!
+
         extCoeff = np.array([self.__ExtCoeffDict[i] for i in layerIds])
         Fice = np.array([self.__FiceDict[i] for i in layerIds])
         Fsoot = np.array([self.__SootDict[i] for i in layerIds])
@@ -748,7 +752,6 @@ class SlabModel:
         if self.__Diffraction == True:
                 ## If diffraction == True, Multiply the extinction coefficient by 2 more Geometric Optics Approximation.
                 ## This is for the BRDF function. ##
-                extCoeff = 2.*extCoeff
                 DiffractionPDF = []
                 ## also, need to get the "Phase function" Samples --> Note, these are just 
                 ## raw probability distrubtion functions, not actual phase functions.
@@ -1091,6 +1094,11 @@ class SlabModel:
         ## Loop through all wave lengths!
         ## Special function here that will allow you to track the transmitted energy
         ## at specified depths within the snowpack., more of a diagnostic.
+
+        if self.__Diffraction == True:
+            for i in self.__ExtCoeffDict.keys():
+                self.__ExtCoeffDict[i] = float(self.__ExtCoeffDict[i])*2. ## multiply by two!
+
         for wdx,wavelen in enumerate(WaveLength):
             ## set up transmission dictionary here for wavelength.
             if TrackTransmission == True:
@@ -1118,8 +1126,6 @@ class SlabModel:
             ## Starting at top layer, so all layer ids start at zero!
             layerIds=np.zeros([nPhotons],dtype=np.short) ## short integer
 
-
-
             extCoeff=np.array([self.__ExtCoeffDict[i] for i in layerIds])
             Fice = np.array([self.__FiceDict[i] for i in layerIds])
             Fsoot = np.array([self.__SootDict[i] for i in layerIds])
@@ -1128,7 +1134,6 @@ class SlabModel:
 
             if self.__Diffraction == True:
                 ## If diffraction == True, Multiply the extinction coefficient by 2 more Geometric Optics Approximation.
-                extCoeff = 2.*extCoeff
                 DiffractionPDF = []
                 ## also, need to get the "Phase function" Samples --> Note, these are just 
                 ## raw probability distrubtion functions, not actual phase functions.
