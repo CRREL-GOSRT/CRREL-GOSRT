@@ -102,7 +102,7 @@ def unit_vector(vector):
     return vector / np.linalg.norm(vector)
 
 
-def Fresnel(n1, n2, v_i, v_n,polar=0):
+def Fresnel(n1, n2, v_i, v_n,polar='U'):
     """
     This function determines the new reflected/transmitted directions of a ray at a boundary, and their corresponding weights.
 
@@ -173,11 +173,10 @@ def Fresnel(n1, n2, v_i, v_n,polar=0):
         ## By default this number is NOT complex and photon is assumed to be unpolarized, and the reflectance follows unpolarized
         ## averaging of the Fresnel equations.
         ## if it is complex, use the according reflectance.
-        if np.iscomplex(polar) == True:
-            if polar.imag == 1:
+        if polar.lower() == 'h':
                 ## if imaginary part of "polar" == 1 then assume polarization is parallel (Rs)
                 reflectance=Rs**2.
-            else: ##otherwise, assume the polarization is perpendicular (Rp)
+        elif polar.lower() == 'v': ##otherwise, assume the polarization is perpendicular (Rp)
                 reflectance=Rp**2.
         else: ## If it's not complex, return unpolarized reflectance
             reflectance = (Rs ** 2.+ Rp ** 2.) / 2.
@@ -201,7 +200,7 @@ def Fresnel(n1, n2, v_i, v_n,polar=0):
 
     return v_i_ref, v_i_tran, reflectance,1.0-reflectance
 
-def isReflected(n1, n2, v_i, v_n,polar=0,TIR=0.0):
+def isReflected(n1, n2, v_i, v_n,polar='U',TIR=0.0):
     """
     This function determines whether the photon is reflected or transmitted
 
@@ -267,13 +266,12 @@ def isReflected(n1, n2, v_i, v_n,polar=0,TIR=0.0):
         ## By default this number is NOT complex and photon is assumed to be unpolarized, and the reflectance follows unpolarized
         ## averaging of the Fresnel equations.
         ## if it is complex, use the according reflectance.
-        if np.iscomplex(polar) == True:
-            if polar.imag == 1:
+        if polar.lower() == 'h':
                 ## if imaginary part of "polar" == 1 then assume polarization is parallel (Rs)
                 reflectance=Rs**2.
-            else: ##otherwise, assume the polarization is perpendicular (Rp)
+        elif polar.lower() == 'v': ##otherwise, assume the polarization is perpendicular (Rp)
                 reflectance=Rp**2.
-        else:
+        else: ## If it's not complex, return unpolarized reflectance
             reflectance = (Rs ** 2.+ Rp ** 2.) / 2.
 
         # Reflect photon:
@@ -710,7 +708,7 @@ def TracktoAbsStraight(pSource,pTarget,nIce,normalsMesh,obbTree,
 
 
 def TracktoAbsWPhaseF(pSource,pDir,nIce,kIce,normalsMesh,obbTree,
-        nAir=1.00003,raylen=1000,polar=0,maxBounce=100,particle=True,MaxTIRbounce=30):
+        nAir=1.00003,raylen=1000,polar='U',maxBounce=100,particle=True,MaxTIRbounce=30):
 
     """
     This function is essentially the Kaempfer model only without absorption.  In essence, this function initializes

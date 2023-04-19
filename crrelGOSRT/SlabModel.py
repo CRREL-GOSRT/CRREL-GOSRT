@@ -12,6 +12,35 @@ from matplotlib import pyplot as plt
 class SlabModel:
     """SlabModel is the main class for the CRREL Photon Tracking Snow Geometric Optics RTM.
 
+        Version 0.4.0 --> Replaced version 0.3.0 April 2023
+
+            Key 0.3.0 -> 0.4.0 Changes:
+                - Important (initial) updates made to incorporate diffraction and polarization into the slab model!
+                - Diffraction:
+                    - Added new variables to the namelist that allow the user to generate a "diffraction phase function" for a 
+                      variety of idealized shapes and segmented snow grains.
+                    - Diffraction is incorporated into the photon-tracking model by doubling the extinction coefficient and splitting the scattering 50/50
+                      into the diffraction and fresnel phase functions
+                    - Diffraction is computed using numerical intergration in the new "Diffraction.py" script.
+                    - Why doesn't diffraction, the most forward scattering of the phase functions, not simply eat the other phase function?
+
+                - Polarization:
+                    - Distinct phase functions for Parallel and Perpendicular radiation scattering are now automatically computed by PhotonTrack.py and stored in the
+                      optical props output file.
+                    - Here, the user specifies in the namelist whether to initialize the model for parallel, perpendicular, or unpolarized radiation, the phase function then used 
+                      matches the phase function corresponding to the specification.  Note, unpolarized radiation is just the average of the parallel and perpendicular phase functions.
+                    - User allowed namelist options for polarization:
+                        - Parallel: 'h','horizontal','hpolar','parallel'
+                        - Perpendicular: 'v','vertical','vpolar','perpendicular'
+                        - Unpolarized: 'u','unpolarized','natural'
+                    - Note, the polarization defaults to unpolarized.
+
+                - Other minor updates and code clean up not really worth mentioning are included.
+
+                - CRITICAL NOTE: By default, this version of slab model will NOT run with old versions of optical properties files without two distinct phase functions for each polarization!
+                  However, this can be overridden if the user specifies the namelist variable: UseOldInputFiles = 1.  This will assume that you are using optical property files without polarization.
+                  If setting UseOldInputFiles = 1, the namelist "Polarization" variable will be overridden.
+
         Version 0.3.0 --> Replaced version 0.2.1 July 2022
 
             Key 0.2.1 -> 0.3.0 Changes:
@@ -135,7 +164,9 @@ class SlabModel:
                            'DiffractionGrainPath':'/Users/rdcrltwl/Desktop/SnowOpticsProject/MicroCTData/micro-CT/VTK/',
                            'needle_aspect':0.06,
                            'needle_cap_ratio':0.06,
-                           'DiffractionKwargs':{'normal': (0,0,1),'CellSamples':5,'nx':150,'ny':150}
+                           'DiffractionKwargs':{'normal': (0,0,1),'CellSamples':5,'nx':150,'ny':150},
+                           'Polarization':'natural',
+                           'UseOldInputFiles': 0
                            }
 
         cwd=os.getcwd()
@@ -311,8 +342,17 @@ class SlabModel:
                     self.__BDict[self.__layerIds[idx]] = float(c.split('=')[-1])
                 if 'Estimated Sample Density' in c:
                     self.__DensDict[self.__layerIds[idx]] = float(c.split('=')[-1].split('(')[0])
-                if 'Theta (radians)' in c:
-                    headerLines.append(cdx)
+
+                if self.namelistDict['UseOldInputFiles'] == 0:
+                    if 'Phase Function (H)' in c:
+                        headerLines_H.append(cdx)
+                    if 'Phase Function (V)' in c:
+                        headerLines_V.append(cdx)
+                else:
+                    if idx == 0: ## Only print out the warning on the first file name!
+                        self.Warning("Assuming that your input optical property files are old and do not have polarization, note that this will override the namelist 'Polarization' variable!")
+                    if 'Theta (radians)n' in c:
+                        headerLines.append(cdx)
 
                 ### Initialize Diffraction Namelist values if appropriate! ###
                 if self.__Diffraction == True: ## Here is where you set up the Diffraction dictionaries, if diffraction == True!
@@ -362,10 +402,42 @@ class SlabModel:
             self.__CosIs={}
             self.__PhaseAsym={}
 
+            ## kind of a hacky way to check if the prescribed polarization is allowed here! ##
+            ## I AM LURE, RULER OF THE PLANET OMICRON PERSEI 8! ##
+            if self.namelistDict['Polarization'].lower() not in ['u','unpolarized','natural','v','vertical','vpolar','perpendicular','h','horizontal','hpolar','parallel']:
+                self.Warning("%s is not an allowed polarization! Defaulting to natural or unpolarized light! Please see the namelist for allowed options!")
+                self.namelistDict['Polarization'] = 'u'
+
+            ### set the phase function here for each layer. ##
+
             for idx, i in enumerate(self.namelistDict['PropFileNames']):
-                data=pd.read_csv(self.__PropFiles[idx],header=headerLines[idx])
-                self.__ThetaDict[self.__layerIds[idx]] = data['Theta (radians)'].values
-                self.__PhaseDict[self.__layerIds[idx]] = data[' Phase Function'].values
+                if self.namelistDict['UseOldInputFiles'] == 0:
+                    if self.namelistDict['Polarization'].lower() in ['u','unpolarized','natural']: ## average the horizontal and vertical polarization to get phase function
+                        data_h=pd.read_csv(self.__PropFiles[idx],header=headerLines_H[idx])
+                        data_v=pd.read_csv(self.__PropFiles[idx],header=headerLines_V[idx])
+                        self.__ThetaDict[self.__layerIds[idx]] = data_h['Theta (radians)'].values
+                        ## phase function = average of the polarized data! ##
+                        self.__PhaseDict[self.__layerIds[idx]] = (data_h[' Phase Function (H)'].values + data_v[' Phase Function (V)'].values)/2.
+
+                    elif self.namelistDict['Polarization'].lower() in ['v','vertical','vpolar','perpendicular']: ## get vertically polarized phase functions ##
+                        data_v=pd.read_csv(self.__PropFiles[idx],header=headerLines_V[idx])
+                        self.__ThetaDict[self.__layerIds[idx]] = data_v['Theta (radians)'].values
+                        ## phase function = vertically polarized data! ##
+                        self.__PhaseDict[self.__layerIds[idx]] = data_v[' Phase Function (V)'].values
+
+                    else: ## Only option remaining is for horizontally polarized radiation!
+                        data_h=pd.read_csv(self.__PropFiles[idx],header=headerLines_H[idx]) ## Get horizontally polarized phase function. ##
+                        self.__ThetaDict[self.__layerIds[idx]] = data_h['Theta (radians)'].values
+                        ## phase function = horizontally polarized data! ##
+                        self.__PhaseDict[self.__layerIds[idx]] = data_h[' Phase Function (H)'].values
+                else:
+                    ## if using old files! --> No polarization! ##
+                    data=pd.read_csv(self.__PropFiles[idx],header=headerLines[idx])
+                    self.__ThetaDict[self.__layerIds[idx]] = data['Theta (radians)'].values
+                    self.__PhaseDict[self.__layerIds[idx]] = data[' Phase Function'].values
+
+                    
+
 
                 nBins=len(self.__ThetaDict[self.__layerIds[idx]])
 

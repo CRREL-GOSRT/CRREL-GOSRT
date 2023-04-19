@@ -16,13 +16,25 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
                                  nPhotons=1500,Absorb=True,GrainSamples=40,maxBounce=100,PhaseBins=180,
                                  verbose=False,distScale=1.2,VoxelUnits='um',wavelenUnits='nm',plot=True,
                                  phaseSmooth=0,raylen=2000,PF_fromSegmentedParticles=False,
-                                 Advanced = True,TrackThresh=0.1,TrackDepthMax=4,
-                                 Polar = False,particlePhase=True,
+                                 Advanced = True,TrackThresh=0.1,TrackDepthMax=4,particlePhase=True,
                                  Tolerance = 0.001,MeshDescription='Snow Mesh',MaxTIR=30):
 
     """
         This function calls individual sub-functions to get optical properties and saves them to file for
         1D spectral albedo model:
+
+        Version 0.4.0 --> Major updates to the code to reflect the inclusion of polarized radiation into the model.
+                          CRITICALLY NOTE: Phase Functions for both the horizontal and vertical polarizations are saved to the
+                          output optical properties file.  This means these files can only be used with version 0.4.0 or later of SlabModel.py.
+                          optical properties files generated with Version 0.3.0 of RayTracing_OpticalProperties can be used with SlabModel.py 0.4.0 or later if 
+                          the namelist value UseOldInputFiles = 1.
+
+                          In this formulation, nPhotons are evenly divided into horizontal and vertical polarizations to compute 2 separate phase functions.
+                          Vpol-Phase = nPhotons/2.
+                          Hpol-Phase = nPhotons/2.
+
+                        Key Updates:
+                          - Removed developmental "polar" option, and polarization is computed and tracked automatically.
 
         Version 0.3.0 --> Major updates to the code to reflect the replacement of the Xiong et al. (2015) method for computing the extinction
                           coefficient with the method described in Randrianaliosa and Baillis (2010) method that uses the mean free-path
@@ -99,12 +111,6 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
             !------------------------------------------------------------------------------------------------!
             Developmental Options (Note, these are not rigorously tested, and should not be used in operation)
             !------------------------------------------------------------------------------------------------!
-
-
-
-            Polar (optional/developmental): Adds polarization to the scattering phase function calculation.
-                                            Currently, no polarization data is actually saved to the output data file,
-                                            but can be used to look at linear polarization of a specific particle shape by plotting.
 
 
             Tolerance (float) - Tolerance used in vtk.obbTree to determine how close a ray needs to be to a mesh "cell" to
@@ -194,12 +200,13 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
         Fice,Fice_Straight,TotalLengths,kExt,missed=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
                                               PhaseBins=PhaseBins,particlePhase=particlePhase,raylen = raylen,TIR=MaxTIR)
     else:
-        Fice,TotalLengths,POWER,thetas,Fice_Straight,kExt,missed=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
+        Fice,TotalLengths,POWER_H,POWER_V,thetas,Fice_Straight,kExt,missed=ComputeFice(SnowMesh,nIce,kIce,nPhotons,verbose=verbose,maxBounce=maxBounce,
                                               PhaseBins=PhaseBins,particlePhase=particlePhase,raylen = raylen,TIR=MaxTIR)
 
         bins=np.linspace(0,np.pi,PhaseBins)
         dtheta=np.abs(bins[1]-bins[0])
-        asymmparam = 0.5*dtheta*np.sum(np.cos(thetas)*np.sin(thetas)*POWER)
+        asymmparam = 0.5*dtheta*np.sum(np.cos(thetas)*np.sin(thetas)*0.5*(POWER_H+POWER_V))
+
 
     time2=datetime.now()
     print("Found F_{ice} = %.2f after %.1f seconds"%(np.nanmean(Fice),(time2-time1).total_seconds()))
@@ -303,16 +310,22 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        file.write("Number of bins in phase function = %i \n"%PhaseBins)
        file.write("Angular Bin Size (radians) = %.5f"%dtheta)
        file.write("------------------------------------------------------  \n")
-       file.write("Theta (radians), Phase Function\n")
+       file.write("Theta (radians), Phase Function (H)\n")
        for tdx in range(len(thetas)):
-           file.write("%.4f, %.4f \n"%(thetas[tdx],POWER[tdx]))
+           file.write("%.4f, %.4f \n"%(thetas[tdx],POWER_H[tdx]))
+
+       file.write("------------------------------------------------------  \n")
+       file.write("Theta (radians), Phase Function (V)\n")
+       for tdx in range(len(thetas)):
+           file.write("%.4f, %.4f \n"%(thetas[tdx],POWER_V[tdx]))
 
     print("Optical Properties saved to: %s"%OutputFilename)
 
 
     if plot == True:
         ax=fig.add_subplot(2,2,4)
-        ax.plot(np.degrees(thetas),POWER,label='%s'%wavelen)
+        ax.plot(np.degrees(thetas),POWER_H,label='%s (H)'%wavelen)
+        ax.plot(np.degrees(thetas),POWER_V,label='%s (V)'%wavelen)
         ax.text(5,1100,"g = %.2f"%(0.5*(asymmparam+1.)),ha='left')
         ax.set_yscale('log')
         ax.set_xlabel("Theta (degrees)")
@@ -360,7 +373,7 @@ def ConvertVoxel2mm(resolution,units='um'):
     return Voxel
 
 
-def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbose=False,
+def ComputeFice(SnowMesh,nIce,kIce,nPhotons, maxBounce = 100,verbose=False,
                 PhaseBins=180,particlePhase=False,PF_fromSegmentedParticles=False,raylen = 1000.,TIR=30):
     """Computes the F_{ice} optical property by running a customized version of the
        explicit photon tracking model described in Kaempfer et al., 2007.
@@ -375,7 +388,6 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
             SnowMesh (CRRELPolyData) - CRREL polydata object with 3D mesh
             nIce (float) - Real part of the refractive index
             nPhotons (float) - Number of photons used to compute F_{ice}
-            Polar (optional:bool) - Allows for fresnel reflection / refraction to be have polarity (False, in development)
             maxBounce (optional:integer) - Number of total internal reflections allowed before the particle is killed for computational efficiency.
             verbose (optional:bool) - if True, will print out notifications every 5% of model completion.
             straight (optional:bool) - Computes Fice following a straight ray through the sample (old, leave as false)
@@ -424,6 +436,12 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
 
     # Option to initialize the photon on a mesh edge (can be within either phase)
     for ii in range(nPhotons):
+
+        if ii > float(nPhotons)/2.: ## Set which polarization to use!
+            polar = 'v' ## Vertical polarization
+        else:
+            polar = 'h' ## Horizontal polarization
+        
         axis=np.random.randint(0,6) ## Choose random axis (x,y,z)
         if axis == 0: ## If x Axis
             x1,x2=SnowMesh.xBounds[0],SnowMesh.xBounds[1]
@@ -459,7 +477,7 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
         ##Run the photon tracking model through the code!
         if PF_fromSegmentedParticles == True:
             TotalIceLength,TotalLength,intersections,Fstraight,first_length,num_scatter_events=RTcode.TracktoAbs(p11,pDir,nIce,normalsMesh,obbTree,
-                    nAir=1.00003,polar=Polar,maxBounce=maxBounce,raylen=raylen,MaxTIRbounce=TIR)
+                    nAir=1.00003,maxBounce=maxBounce,raylen=raylen,MaxTIRbounce=TIR)
 
         else:
             # first round initialize all the necessary variables
@@ -468,15 +486,19 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
                 dtheta=np.abs(bins[1]-bins[0])
                 bins=np.cos(bins)
                 binCenters=(bins[:-1]+bins[1:])/2.
-                POWER=np.zeros_like(binCenters)
+                POWER_H=np.zeros_like(binCenters) ## Power in horizontally polarized radiation
+                POWER_V=np.zeros_like(binCenters) ## Power in vertically polarized radiation
 
             TotalIceLength,TotalLength,intersections,weights,COSPHIS,Fstraight,num_scatter_events=RTcode.TracktoAbsWPhaseF(p11,pDir,nIce,kIce,normalsMesh,obbTree,
-                    nAir=1.00003,polar=Polar,maxBounce=maxBounce,particle=particlePhase,raylen=raylen,MaxTIRbounce=TIR)
+                    nAir=1.00003,maxBounce=maxBounce,particle=particlePhase,raylen=raylen,polar=polar,MaxTIRbounce=TIR)
 
 
             for cdx,c in enumerate(COSPHIS):
                 index=np.argmin(np.abs(binCenters-c))
-                POWER[index]+=weights[cdx]
+                if polar.lower() == 'h': ## if polarization flag is 'h' for 'horizontal' add the weight to the horizontal polarization power array!
+                    POWER_H[index]+=weights[cdx]
+                else:
+                    POWER_V[index]+=weights[cdx]
 
         if TotalLength == 0:
             missed+=1
@@ -501,12 +523,17 @@ def ComputeFice(SnowMesh,nIce,kIce,nPhotons,Polar = False, maxBounce = 100,verbo
 
     else:
         thetas=np.arccos(binCenters)
-        N = np.sum(POWER[:])
+
         dOmega = np.sin(thetas[:])*dtheta*2*np.pi
-        POWER=4.*np.pi*POWER[:]/(N*dOmega)
+        if polar.lower() == 'h':
+            N = np.sum(POWER_H[:])
+            POWER_H=4.*np.pi*POWER_H[:]/(N*dOmega)
+        if polar.lower() == 'v':
+            N = np.sum(POWER_V[:])
+            POWER_V=4.*np.pi*POWER_V[:]/(N*dOmega)    
         kExt = 1./(mfp/nPhotons)
 
-        return Fice,TotalLengths,POWER,thetas,Fice_Straight,kExt,missed
+        return Fice,TotalLengths,POWER_H,POWER_V,thetas,Fice_Straight,kExt,missed
 
 
 
