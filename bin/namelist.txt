@@ -7,7 +7,7 @@ MasterPath = /Path/to/optical_properties/files/
 PropFileNames = sfc_2_300mm.txt,#300mm_2_100mm.txt,100mm_2_50mm.txt,50mm_2_ground.txt
 
 ## Snowpack Size and Layer Characteristics
-LayerTops = 600,#s300,100,50,0
+LayerTops = 60,#s300,100,50,0
 xSize = 10
 ySize = 10
 

@@ -314,11 +314,12 @@ def RayTracing_OpticalProperties(VTKFilename,GrainFolder,OutputFilename,Material
        for tdx in range(len(thetas)):
            file.write("%.4f, %.4f \n"%(thetas[tdx],POWER_H[tdx]))
 
+       file.write("End-horizontal\n")
        file.write("------------------------------------------------------  \n")
        file.write("Theta (radians), Phase Function (V)\n")
        for tdx in range(len(thetas)):
            file.write("%.4f, %.4f \n"%(thetas[tdx],POWER_V[tdx]))
-
+       file.write("End-vertical\n")
     print("Optical Properties saved to: %s"%OutputFilename)
 
 

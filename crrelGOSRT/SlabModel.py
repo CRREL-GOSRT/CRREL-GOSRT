@@ -326,7 +326,14 @@ class SlabModel:
         self.__DiffractFracDict={}
         self.__DiffractSizeDict={}
         self.__DiffractionShapeClasses={}
-        headerLines=[]
+        ## set up header lines for phase function!
+        if self.namelistDict['UseOldInputFiles'] == 0:
+            headerLines_H=[]
+            headerLines_V=[]
+            nrowsH=[]
+            nrowsV=[]
+        else:
+            headerLines=[]
         for idx, i in enumerate(self.namelistDict['PropFileNames']):
             txtdata = open(self.__PropFiles[idx], 'r')
             Lines = txtdata.readlines()
@@ -348,6 +355,11 @@ class SlabModel:
                         headerLines_H.append(cdx)
                     if 'Phase Function (V)' in c:
                         headerLines_V.append(cdx)
+
+                    if 'End-horizontal' in c:
+                        nrowsH.append(cdx - headerLines_H[idx] - 1)
+                    if 'End-vertical' in c:
+                        nrowsV.append(cdx - headerLines_V[idx] - 1)
                 else:
                     if idx == 0: ## Only print out the warning on the first file name!
                         self.Warning("Assuming that your input optical property files are old and do not have polarization, note that this will override the namelist 'Polarization' variable!")
@@ -413,20 +425,20 @@ class SlabModel:
             for idx, i in enumerate(self.namelistDict['PropFileNames']):
                 if self.namelistDict['UseOldInputFiles'] == 0:
                     if self.namelistDict['Polarization'].lower() in ['u','unpolarized','natural']: ## average the horizontal and vertical polarization to get phase function
-                        data_h=pd.read_csv(self.__PropFiles[idx],header=headerLines_H[idx])
-                        data_v=pd.read_csv(self.__PropFiles[idx],header=headerLines_V[idx])
+                        data_h=pd.read_csv(self.__PropFiles[idx],header=headerLines_H[idx],nrows=nrowsH[idx])
+                        data_v=pd.read_csv(self.__PropFiles[idx],header=headerLines_V[idx],nrows=nrowsV[idx])
                         self.__ThetaDict[self.__layerIds[idx]] = data_h['Theta (radians)'].values
                         ## phase function = average of the polarized data! ##
                         self.__PhaseDict[self.__layerIds[idx]] = (data_h[' Phase Function (H)'].values + data_v[' Phase Function (V)'].values)/2.
 
                     elif self.namelistDict['Polarization'].lower() in ['v','vertical','vpolar','perpendicular']: ## get vertically polarized phase functions ##
-                        data_v=pd.read_csv(self.__PropFiles[idx],header=headerLines_V[idx])
+                        data_v=pd.read_csv(self.__PropFiles[idx],header=headerLines_V[idx],nrows=nrowsV[idx])
                         self.__ThetaDict[self.__layerIds[idx]] = data_v['Theta (radians)'].values
                         ## phase function = vertically polarized data! ##
                         self.__PhaseDict[self.__layerIds[idx]] = data_v[' Phase Function (V)'].values
 
                     else: ## Only option remaining is for horizontally polarized radiation!
-                        data_h=pd.read_csv(self.__PropFiles[idx],header=headerLines_H[idx]) ## Get horizontally polarized phase function. ##
+                        data_h=pd.read_csv(self.__PropFiles[idx],header=headerLines_H[idx],nrows=nrowsH[idx]) ## Get horizontally polarized phase function. ##
                         self.__ThetaDict[self.__layerIds[idx]] = data_h['Theta (radians)'].values
                         ## phase function = horizontally polarized data! ##
                         self.__PhaseDict[self.__layerIds[idx]] = data_h[' Phase Function (H)'].values
@@ -435,8 +447,6 @@ class SlabModel:
                     data=pd.read_csv(self.__PropFiles[idx],header=headerLines[idx])
                     self.__ThetaDict[self.__layerIds[idx]] = data['Theta (radians)'].values
                     self.__PhaseDict[self.__layerIds[idx]] = data[' Phase Function'].values
-
-                    
 
 
                 nBins=len(self.__ThetaDict[self.__layerIds[idx]])
